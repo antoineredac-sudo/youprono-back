@@ -7,7 +7,7 @@ namespace dotnet.core.thegoldenfan.controllers
 {
     [Route("[controller]/[action]")]
     [ApiController]
-    [Authorize(Roles = "administrators, roots")]
+    //[Authorize(Roles = "administrators, roots")]
     public class DatabaseController : ControllerBase
     {
         private readonly DatabaseService service;
