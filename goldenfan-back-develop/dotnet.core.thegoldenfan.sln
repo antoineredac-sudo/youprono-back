@@ -1,0 +1,55 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.4.33103.184
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "dotnet.core.thegoldenfan.api", "dotnet.core.thegoldenfan.api\dotnet.core.thegoldenfan.api.csproj", "{8546ACD1-A80E-4179-AF78-545E48FDCAEF}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "dotnet.core.thegoldenfan", "dotnet.core.thegoldenfan\dotnet.core.thegoldenfan.csproj", "{3B674272-638C-4E7F-BF6B-A2E34E502694}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "dotnet.core.thegoldenfan.controllers", "dotnet.core.thegoldenfan.controllers\dotnet.core.thegoldenfan.controllers.csproj", "{3E1DE0DF-3160-4FB5-957B-63E54ED6D166}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "dotnet.core.utils", "..\dotnet.core.utils\dotnet.core.utils.csproj", "{303FCA2B-7B82-47AF-BFE4-36C6385FBE9B}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "dotnet.core.utils.server", "..\dotnet.core.utils.server\dotnet.core.utils.server.csproj", "{FE887B05-2CCB-4080-A5C6-1C8028458135}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "dotnet.core.identity", "..\dotnet.core.identity\dotnet.core.identity\dotnet.core.identity.csproj", "{C6DE3F56-63A2-44CD-B4D4-4BBFA69A1564}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{8546ACD1-A80E-4179-AF78-545E48FDCAEF}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{8546ACD1-A80E-4179-AF78-545E48FDCAEF}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{8546ACD1-A80E-4179-AF78-545E48FDCAEF}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{8546ACD1-A80E-4179-AF78-545E48FDCAEF}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3B674272-638C-4E7F-BF6B-A2E34E502694}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3B674272-638C-4E7F-BF6B-A2E34E502694}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3B674272-638C-4E7F-BF6B-A2E34E502694}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3B674272-638C-4E7F-BF6B-A2E34E502694}.Release|Any CPU.Build.0 = Release|Any CPU
+		{3E1DE0DF-3160-4FB5-957B-63E54ED6D166}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3E1DE0DF-3160-4FB5-957B-63E54ED6D166}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3E1DE0DF-3160-4FB5-957B-63E54ED6D166}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3E1DE0DF-3160-4FB5-957B-63E54ED6D166}.Release|Any CPU.Build.0 = Release|Any CPU
+		{303FCA2B-7B82-47AF-BFE4-36C6385FBE9B}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{303FCA2B-7B82-47AF-BFE4-36C6385FBE9B}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{303FCA2B-7B82-47AF-BFE4-36C6385FBE9B}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{303FCA2B-7B82-47AF-BFE4-36C6385FBE9B}.Release|Any CPU.Build.0 = Release|Any CPU
+		{FE887B05-2CCB-4080-A5C6-1C8028458135}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{FE887B05-2CCB-4080-A5C6-1C8028458135}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{FE887B05-2CCB-4080-A5C6-1C8028458135}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{FE887B05-2CCB-4080-A5C6-1C8028458135}.Release|Any CPU.Build.0 = Release|Any CPU
+		{C6DE3F56-63A2-44CD-B4D4-4BBFA69A1564}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{C6DE3F56-63A2-44CD-B4D4-4BBFA69A1564}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{C6DE3F56-63A2-44CD-B4D4-4BBFA69A1564}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{C6DE3F56-63A2-44CD-B4D4-4BBFA69A1564}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {16F9DAAC-98C1-47E2-890A-58A63F3B46AE}
+	EndGlobalSection
+EndGlobal

@@ -1,0 +1,1 @@
+dotnet ef dbcontext scaffold -c AppDbContext -o Dbs  "Host=api.thegoldenfan.com;Port=5442;Database=dev_thegoldenfan;Username=postgres;Password=2023thegoldenfan" Npgsql.EntityFrameworkCore.PostgreSQL --force --no-onconfiguring

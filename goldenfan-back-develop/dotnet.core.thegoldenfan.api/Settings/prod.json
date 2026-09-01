@@ -1,0 +1,97 @@
+{
+  "application": {
+    "environment": "dev",
+    "name": "api.thegoldenfan.com",
+    "version": "",
+    "description": "",
+    "path": "/",
+    "protocole": "https",
+    "hostname": "localhost",
+    "port": "5052",
+    "emails": {
+      "noreply": "no-reply"
+    },
+    "services": {
+      "opta": {
+        //"key": "MXZtbWFldHpveGtnZzFxZjZwa3BmbWt1MGs="
+        "key": "czZxd2VkMzE4ejM1MXUzc2pqaGt6cThiYw=="
+      }
+    }
+  },
+  "config": {
+    "kestrel": {
+      "http": {
+        "ipaddress": "0.0.0.0",
+        "port": 5051
+      },
+      "https": {
+        "ipaddress": "0.0.0.0",
+        "port": 5052,
+        "certificat": "Settings/cert.pfx",
+        "password": "MyStrongPassword"
+      }
+    },
+    "cors": {
+      "allowedurls": [
+        "http://localhost:5000",
+        "https://localhost:5000",
+        "http://localhost:5041",
+        "https://localhost:5042",
+        "https://identity.thegoldenfan.com",
+        "https://proto.thegoldenfan.com",
+        "https://thegoldenfan.com",
+        "https://www.thegoldenfan.com"
+      ]
+    },
+    "dbs": {
+      "CreateDataBase": false,
+      "seeding": false,
+      "clear": false,
+      "migrate": false,
+      "connectionstring": {
+        "identity": {
+          "ro": "Host=51.91.29.115;Port=5442;Database=identity;Username=postgres;Password=2023thegoldenfan",
+          "rw": "Host=51.91.29.115;Port=5442;Database=identity;Username=postgres;Password=2023thegoldenfan"
+        },
+        "app": {
+          "ro": "Host=51.91.29.115;Port=5442;Database=thegoldenfan;Username=postgres;Password=2023thegoldenfan;Include Error Detail=true",
+          "rw": "Host=51.91.29.115;Port=5442;Database=thegoldenfan;Username=postgres;Password=2023thegoldenfan;Include Error Detail=true"
+        }
+      }
+    },
+    "identity": {
+      "sessiontimeout": 10,
+      "password": {
+        "requiredigit": false,
+        "requirelowercase": false,
+        "requireuppercase": false,
+        "requirenonalphanumeric": false,
+        "requireduniquechars": 1,
+        "requiredlength": 6
+      },
+      "lockout": {
+        "defaultlockouttimespan": 5,
+        "maxfailedaccessattempts": 5,
+        "allowedfornewusers": true
+      },
+      "signin": {
+        "requireconfirmedphonenumber": false,
+        "requireconfirmedemail": true,
+        "RequireConfirmedAccount": true
+      },
+      "user": {
+        "allowedusernamecharacters": "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-._@+",
+        "requireuniqueemail": true
+      },
+      "jwt": {
+        "validfor": 120,
+        "key": "iNivDmHLpUA223sqsfhqGbMRdRj1PVkH",
+        "rol": "nimportequoi",
+        "jwtissueroptions": {
+          "issuer": "webApi",
+          "audience": "http://localhost:5031/"
+        }
+      }
+    }
+  }
+}
