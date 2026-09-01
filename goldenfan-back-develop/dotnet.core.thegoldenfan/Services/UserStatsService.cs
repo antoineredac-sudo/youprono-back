@@ -323,6 +323,11 @@ namespace dotnet.core.thegoldenfan.Services
         public async Task UpdateAsync(Guid userId, string matchId, string teamId)
         {
             string src = "UserStatsService.UpdateAsync";
+
+            var match = await dbContext.Matches.FirstOrDefaultAsync(w => w.Id.Equals(matchId));
+            if (match == null) { throw BaseException.NotFound(-1, src); }
+            if (match.Status != "Played") { throw new Exception("Les résultats officiels de ce match n'ont pas encore été saisis."); }
+
             var stats = await CalculateStatsAsync(userId, matchId, teamId);
             var inDb = await dbContext
                 .UserMatches
