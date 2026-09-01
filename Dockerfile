@@ -14,5 +14,6 @@ RUN dotnet publish -c Release -o /app
 FROM mcr.microsoft.com/dotnet/aspnet:7.0 AS runtime
 WORKDIR /app
 COPY --from=build /app .
+EXPOSE 10000
 
 ENTRYPOINT ["dotnet", "dotnet.core.thegoldenfan.api.dll"]
