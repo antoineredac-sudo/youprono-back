@@ -1,4 +1,4 @@
-﻿using dotnet.core.utils;
+using dotnet.core.utils;
 using dotnet.core.thegoldenfan.Dbs;
 using dotnet.core.thegoldenfan.Models;
 using dotnet.core.thegoldenfan.Services;
@@ -58,6 +58,24 @@ namespace dotnet.core.thegoldenfan.controllers
             catch (Exception ex)
             {
                 res = ResponseModel<string>.Exception(ex);
+            }
+            return res;
+        }
+
+        // Liste de tous les inscrits, avec leur nombre. Usage privé du fondateur :
+        // l'accès n'est possible qu'avec le bon code d'accès dans l'adresse.
+        [HttpGet("All/{accessCode}")]
+        public async Task<ResponseModel<AllUsersResult>> AllAsync(string accessCode)
+        {
+            ResponseModel<AllUsersResult> res = ResponseModel<AllUsersResult>.CreateDefault();
+            try
+            {
+                var obj = await service.AllAsync(accessCode);
+                res = new ResponseModel<AllUsersResult>(0, obj);
+            }
+            catch (Exception ex)
+            {
+                res = ResponseModel<AllUsersResult>.Exception(ex);
             }
             return res;
         }
