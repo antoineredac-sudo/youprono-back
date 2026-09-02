@@ -326,7 +326,15 @@ namespace dotnet.core.thegoldenfan.Services
 
             var match = await dbContext.Matches.FirstOrDefaultAsync(w => w.Id.Equals(matchId));
             if (match == null) { throw BaseException.NotFound(-1, src); }
-            if (match.Status != "Played") { throw new Exception("Les résultats officiels de ce match n'ont pas encore été saisis."); }
+            if (match.Status != "Played") {
+                var staleEntry = await dbContext.UserMatches.FirstOrDefaultAsync(w => w.UserId.Equals(userId) && w.MatchId.Equals(matchId) && w.TeamId.Equals(teamId));
+                if (staleEntry != null && staleEntry.ResultTotal != null) {
+                    staleEntry.ResultTotal = null;
+                    staleEntry.ResultFinalTotal = null;
+                    await dbContext.SaveChangesAsync();
+                }
+                throw new Exception("Les résultats officiels de ce match n'ont pas encore été saisis.");
+            }
 
             var stats = await CalculateStatsAsync(userId, matchId, teamId);
             var inDb = await dbContext
