@@ -1,4 +1,4 @@
-﻿using dotnet.core.thegoldenfan.Dbs;
+using dotnet.core.thegoldenfan.Dbs;
 using dotnet.core.utils;
 using dotnet.core.utils.Helpers;
 using dotnet.core.utils.server.Helpers;
@@ -56,6 +56,51 @@ namespace dotnet.core.thegoldenfan.Services
             }
             double res = Math.Round((totalPrediction == 0 || totalMatch == 0 ? 1 : totalPrediction / totalMatch), 4);
             return res;
+        }
+
+
+        // --- Liste des inscrits (usage privé du fondateur) ---
+        // Protégée par un code d'accès simple, pour que la liste des pseudos
+        // ne soit pas lisible par n'importe qui connaissant l'adresse.
+        private const string AllUsersAccessCode = "psg2026";
+
+        public sealed class UserSummaryResult
+        {
+            public Guid Id { get; set; }
+            public string? DisplayName { get; set; } = null;
+            public DateTime? DateCreated { get; set; }
+        }
+
+        public sealed class AllUsersResult
+        {
+            public int Count { get; set; }
+            public List<UserSummaryResult> Users { get; set; } = new();
+        }
+
+        public async Task<AllUsersResult> AllAsync(string accessCode)
+        {
+            string src = "UserService.AllAsync";
+            if (StringHelper.IsNull(accessCode) ||
+                !accessCode.Trim().Equals(AllUsersAccessCode, StringComparison.OrdinalIgnoreCase))
+            { throw BaseException.InvalidModel(-1, src); }
+
+            var users = await dbContext
+                .Users
+                .Select(s => new UserSummaryResult
+                {
+                    Id = s.Id,
+                    DisplayName = s.DisplayName,
+                    DateCreated = s.DateCreated
+                })
+                .ToListAsync();
+
+            users = users.OrderByDescending(o => o.DateCreated).ToList();
+
+            return new AllUsersResult
+            {
+                Count = users.Count,
+                Users = users
+            };
         }
 
 
@@ -226,69 +271,6 @@ namespace dotnet.core.thegoldenfan.Services
 
             return res;
         }
-
-        //public async Task<PaginationModel<FriendResult>> FriendsAsync(Guid userId, string teamId, int page=1, int limit=10)
-        //{
-        //    PaginationModel<FriendResult> res = null;
-        //    List<User> lo = new List<User>();
-        //    var inDb = await dbContext
-        //        .Friends
-        //        .Include(i => i.User0)
-        //        .ThenInclude(i => i.UserMatches)
-        //        .Include(i => i.User1)
-        //        .ThenInclude(i => i.UserMatches)
-        //        .Where(w => w.User0Id.Equals(userId) || w.User1Id.Equals(userId))
-        //        .ToListAsync();
-        //    if (inDb != null && inDb.Count > 0)
-        //    {
-        //        lo.AddRange(inDb.Select(s => s.User0));
-        //        lo.AddRange(inDb.Select(s => s.User1));
-        //        lo = lo.ToHashSet().ToList();
-        //        if (lo != null && lo.Count > 0)
-        //        {
-        //            lo.RemoveAll(s => s.Id.Equals(userId));
-        //            PaginationModel<User> tmp = PaginationModel<User>.CreatePage(lo, page, limit);
-        //            res = PaginationModel<FriendResult>.ConvertTo(tmp);
-        //            res.Page = new List<FriendResult>();
-        //            var p = tmp.Page.Select(s => new FriendResult() { Id = s.Id, DisplayName = s.DisplayName }).ToList();
-        //            if (p != null && p.Count > 0)
-        //            {
-        //                res.Page.AddRange(p);
-        //                var dic = await GlobalStatsAsync(teamId);
-        //                var lguid = dic.Keys.ToList();
-        //                foreach(var item in res.Page)
-        //                {
-        //                    var gstats = dic.FirstOrDefault(w => w.Key.Equals(item.Id));
-        //                    item.Rank = lguid.IndexOf(item.Id);
-        //                    item.ExpertCoef = gstats.Value;
-        //                }
-        //            }
-        //        }
-        //    }
-        //    return res;
-        //}
-        //public async Task<Dictionary<Guid, double>> GlobalStatsAsync(string teamId)
-        //{
-        //    Dictionary<Guid, double> res = new Dictionary<Guid, double>();
-        //    var matches = await dbContext
-        //        .UserMatches
-        //        .Where(w => w.TeamId.Equals(teamId))
-        //        .OrderByDescending(ob => ob.ResultFinalTotal)
-        //        .ToListAsync();
-        //    if (matches != null)
-        //    {
-        //        var gbusers = matches.GroupBy(gb => gb.UserId);
-        //        foreach (var item in gbusers)
-        //        {
-        //            var id = item.Key;
-        //            var count = item.Count();
-        //            var av = item.Sum(s => s.ResultFinalTotal.HasValue ? s.ResultFinalTotal.Value : 0) / count;
-        //            res.Add(id, av);
-        //        }
-        //        res = res.OrderByDescending(ob => ob.Value).ToDictionary(o => o.Key, o => o.Value);
-        //    }
-        //    return res;
-        //}
 
         public async Task<Friend> AddFriendsAsync(Guid userId, Guid friendId)
         {
