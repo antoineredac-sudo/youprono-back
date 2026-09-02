@@ -53,6 +53,8 @@ namespace dotnet.core.thegoldenfan.Services
             public DateTime CreatedDate { get; set; }
             public bool IsSeasonComplete { get; set; }
             public int MatchesCounted { get; set; }
+            public int MatchesPlayed { get; set; }
+            public int SeasonLength { get; set; }
             public List<GroupMemberRankingResult> Ranking { get; set; } = new();
         }
 
@@ -152,12 +154,21 @@ namespace dotnet.core.thegoldenfan.Services
             if (group == null) { throw BaseException.NotFound(-1, src); }
 
             // Les 10 premiers matchs (toutes compétitions confondues) depuis la création du groupe
-            var seasonMatchIds = await dbContext.Matches
+            // On récupère aussi le statut, pour savoir combien d'entre eux ont réellement été joués.
+            var seasonMatches = await dbContext.Matches
                 .Where(w => w.DateTime >= group.CreatedDate)
                 .OrderBy(o => o.DateTime)
                 .Take(SeasonLength)
-                .Select(s => s.Id)
+                .Select(s => new { s.Id, s.Status })
                 .ToListAsync();
+
+            var seasonMatchIds = seasonMatches.Select(s => s.Id).ToList();
+
+            // Un match est "joué" dès lors que son statut n'est plus "Fixture" (match à venir).
+            // Comparaison insensible à la casse pour ne dépendre d'aucune convention d'écriture.
+            var matchesPlayed = seasonMatches.Count(c =>
+                !string.IsNullOrWhiteSpace(c.Status) &&
+                !c.Status.Trim().Equals("Fixture", StringComparison.OrdinalIgnoreCase));
 
             var memberIds = group.Members.Select(m => m.UserId).ToList();
 
@@ -185,6 +196,8 @@ namespace dotnet.core.thegoldenfan.Services
                 CreatedDate = group.CreatedDate,
                 IsSeasonComplete = seasonMatchIds.Count >= SeasonLength,
                 MatchesCounted = seasonMatchIds.Count,
+                MatchesPlayed = matchesPlayed,
+                SeasonLength = SeasonLength,
                 Ranking = ranking
             };
         }
