@@ -54,6 +54,12 @@ namespace dotnet.core.thegoldenfan.Services
             public int Rank { get; set; }
         }
 
+        public class LeaveGroupResult
+        {
+            public bool GroupDeleted { get; set; }
+            public int RemainingMembers { get; set; }
+        }
+
         public class GroupDetailsResult
         {
             public Guid Id { get; set; }
@@ -160,6 +166,44 @@ namespace dotnet.core.thegoldenfan.Services
                 InviteCode = group.InviteCode,
                 CreatedDate = group.CreatedDate,
                 MemberCount = group.Members.Count + 1
+            };
+        }
+
+        // Un membre quitte le groupe de son plein gré. Le créateur n'a aucun statut
+        // particulier : s'il part, le groupe continue sans lui (CreatorId reste
+        // renseigné, l'utilisateur existe toujours en base, rien ne casse).
+        // Le dernier membre à sortir éteint la lumière : un groupe vide est supprimé.
+        public async Task<LeaveGroupResult> LeaveAsync(Guid groupId, Guid userId)
+        {
+            string src = "GroupService.LeaveAsync";
+
+            var group = await dbContext.Groups
+                .Include(i => i.Members)
+                .FirstOrDefaultAsync(w => w.Id.Equals(groupId));
+            if (group == null) { throw BaseException.NotFound(-1, src); }
+
+            var membership = group.Members.FirstOrDefault(m => m.UserId.Equals(userId));
+            if (membership == null) { throw BaseException.NotFound(-2, src); }
+
+            // Compté avant toute suppression : après Remove, l'état de la collection
+            // de navigation n'est pas garanti tant que SaveChanges n'a pas eu lieu.
+            int membersBefore = group.Members.Count;
+
+            dbContext.GroupMembers.Remove(membership);
+
+            bool groupDeleted = false;
+            if (membersBefore <= 1)
+            {
+                dbContext.Groups.Remove(group);
+                groupDeleted = true;
+            }
+
+            await dbContext.SaveChangesAsync();
+
+            return new LeaveGroupResult
+            {
+                GroupDeleted = groupDeleted,
+                RemainingMembers = groupDeleted ? 0 : membersBefore - 1
             };
         }
 
