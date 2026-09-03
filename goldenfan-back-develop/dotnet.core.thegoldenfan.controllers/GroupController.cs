@@ -51,6 +51,22 @@ namespace dotnet.core.thegoldenfan.controllers
             return res;
         }
 
+        [HttpPost("Leave/{groupId}/{userId}")]
+        public async Task<ResponseModel<LeaveGroupResult>> LeaveAsync(Guid groupId, Guid userId)
+        {
+            ResponseModel<LeaveGroupResult> res = ResponseModel<LeaveGroupResult>.CreateDefault();
+            try
+            {
+                var result = await service.LeaveAsync(groupId, userId);
+                res = new ResponseModel<LeaveGroupResult>(0, result);
+            }
+            catch (Exception ex)
+            {
+                res = ResponseModel<LeaveGroupResult>.Exception(ex);
+            }
+            return res;
+        }
+
         [HttpGet("ById/{groupId}")]
         public async Task<ResponseModel<GroupDetailsResult>> ByIdAsync(Guid groupId)
         {
