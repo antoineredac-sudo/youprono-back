@@ -59,6 +59,51 @@ namespace dotnet.core.thegoldenfan.Services
         }
 
 
+        // --- Coefficient expert, calculé à la demande ---
+        // Moyenne de toutes les notes de match du joueur, plus son bonus d'assiduité.
+        //
+        // Pourquoi ne pas lire la valeur rangée en base (ResultFinalTotal) : elle n'est
+        // écrite que lorsqu'un pronostic est noté. Un joueur qui saute un match ne
+        // déclenche aucune écriture, donc son coefficient reste figé alors que son
+        // assiduité vient de baisser. Recalculer à l'affichage supprime ce gel.
+        public async Task<double> ExpertCoefAsync(Guid userId, string teamId)
+        {
+            var notes = await dbContext
+                .UserMatches
+                .Where(w => w.UserId.Equals(userId)
+                         && w.TeamId.Equals(teamId)
+                         && w.ResultTotal.HasValue)
+                .Select(s => s.ResultTotal.Value)
+                .ToListAsync();
+
+            if (notes.Count == 0) { return 0; }
+
+            double bonus = await AttendanceBonusAsync(userId, teamId);
+            return Math.Round(notes.Average() + bonus, 4);
+        }
+
+        // Même calcul pour tout le monde d'un coup, pour les classements.
+        // Les moyennes sont obtenues en une seule requête ; seul le bonus reste
+        // individuel, puisqu'il dépend de la date du premier pronostic de chacun.
+        public async Task<Dictionary<Guid, double>> ExpertCoefAllAsync(string teamId)
+        {
+            var moyennes = await dbContext
+                .UserMatches
+                .Where(w => w.TeamId.Equals(teamId) && w.ResultTotal.HasValue)
+                .GroupBy(gb => gb.UserId)
+                .Select(g => new { UserId = g.Key, Moyenne = g.Average(a => a.ResultTotal.Value) })
+                .ToListAsync();
+
+            var res = new Dictionary<Guid, double>();
+            foreach (var item in moyennes)
+            {
+                double bonus = await AttendanceBonusAsync(item.UserId, teamId);
+                res[item.UserId] = Math.Round(item.Moyenne + bonus, 4);
+            }
+            return res;
+        }
+
+
         // --- Liste des inscrits (usage privé du fondateur) ---
         // Protégée par un code d'accès simple, pour que la liste des pseudos
         // ne soit pas lisible par n'importe qui connaissant l'adresse.
@@ -218,6 +263,7 @@ namespace dotnet.core.thegoldenfan.Services
         public async Task<List<FriendResult>> RankingByResultFinalTotalAsync(string teamId)
         {
             List<FriendResult> res = new List<FriendResult>();
+            var coefs = await ExpertCoefAllAsync(teamId);
             var gb = await dbContext
                 .UserMatches
                 .Include(i => i.User)
@@ -227,17 +273,14 @@ namespace dotnet.core.thegoldenfan.Services
 
             foreach (var item in gb)
             {
-                var f = item.Where(w => w.ResultFinalTotal != null).OrderByDescending(ob => ob.Match.DateTime).FirstOrDefault();
-                if (f != null)
+                if (!coefs.ContainsKey(item.Key)) { continue; }
+                FriendResult obj = new FriendResult()
                 {
-                    FriendResult obj = new FriendResult()
-                    {
-                        Id = item.Key,
-                        DisplayName = item.First().User.DisplayName,
-                        ExpertCoef = f.ResultFinalTotal.HasValue ? f.ResultFinalTotal.Value : 0
-                    };
-                    res.Add(obj);
-                }
+                    Id = item.Key,
+                    DisplayName = item.First().User.DisplayName,
+                    ExpertCoef = coefs[item.Key]
+                };
+                res.Add(obj);
             }
             res = res.OrderByDescending(ob => ob.ExpertCoef).ToList();
             int i = 0;

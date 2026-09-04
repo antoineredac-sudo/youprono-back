@@ -822,14 +822,7 @@ namespace dotnet.core.thegoldenfan.Services
                     var max = user.OrderByDescending(ob => ob.ResultTotal).FirstOrDefault();
                     res.Record = max.ResultTotal.HasValue ? max.ResultTotal.Value : 0;
                 }
-                Dictionary<Guid, double> avcoef = new Dictionary<Guid, double>();
-                foreach (var item in gbusers)
-                {
-                    var id = item.Key;
-                    var m = item.OrderByDescending(ob => ob.Match.DateTime).ToList();
-                    var f = m.FirstOrDefault();
-                    avcoef.Add(id, f.ResultFinalTotal.HasValue ? f.ResultFinalTotal.Value : 0);
-                }
+                Dictionary<Guid, double> avcoef = await userService.ExpertCoefAllAsync(teamId);
                 avcoef = avcoef.OrderByDescending(ob => ob.Value).ToDictionary(o=>o.Key, o => o.Value);
                 res.ExpertCoef = avcoef.FirstOrDefault(w => w.Key.Equals(userId)).Value;
                 res.Rank = avcoef.Keys.ToList().IndexOf(userId) + 1;
@@ -849,6 +842,7 @@ namespace dotnet.core.thegoldenfan.Services
         public async Task<List<UserRanking>> RankingByResultFinalTotalAsync(string teamId)
         {
             List<UserRanking> res = new List<UserRanking>();
+            var coefs = await userService.ExpertCoefAllAsync(teamId);
             var gb = await dbContext
                 .UserMatches
                 .Include(i => i.User)
@@ -858,14 +852,13 @@ namespace dotnet.core.thegoldenfan.Services
 
             foreach (var item in gb)
             {
-                var f = item.Where(w => w.ResultFinalTotal != null).OrderByDescending(ob => ob.Match.DateTime).FirstOrDefault();
-                if(f!=null)
+                if(coefs.ContainsKey(item.Key))
                 { 
                     UserRanking obj = new UserRanking()
                     {
                         Id = item.Key,
                         UserName = item.First().User.DisplayName,
-                        Score = f.ResultFinalTotal.HasValue ? f.ResultFinalTotal.Value : 0,
+                        Score = coefs[item.Key],
                         Games = item.Count()
                     };
                     res.Add(obj);
