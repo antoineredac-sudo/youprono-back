@@ -176,12 +176,6 @@ namespace dotnet.core.thegoldenfan.Services
             };
             dbContext.Users.Add(newObj);
 
-            var friend = await dbContext.Users.FirstOrDefaultAsync(w => w.NormalizedDisplayName!.Equals("LEPSGDANTOINE"));
-            if (friend != null)
-            {
-                dbContext.Friends.Add(new Friend { Id = Guid.NewGuid(), User0Id = newObj.Id, User1Id = friend.Id });
-            }
-
             await dbContext.SaveChangesAsync();
             return TokenHelper.GenerateToken(newObj.Id.ToString(), newObj.DisplayName, GetRole(normalized));
         }
@@ -238,15 +232,6 @@ namespace dotnet.core.thegoldenfan.Services
                 newObj.NormalizedDisplayName = StringHelper.NormalizeString(model.DisplayName);
                 dbContext.Users.Add(newObj);
 
-                var friend = await dbContext.Users.FirstOrDefaultAsync(w => w.NormalizedDisplayName.Equals("LEPSGDANTOINE"));
-                if (friend != null)
-                {
-                    Friend newFriend = new Friend();
-                    newFriend.Id = Guid.NewGuid();
-                    newFriend.User0Id = userId;
-                    newFriend.User1Id = friend.Id;
-                    dbContext.Friends.Add(newFriend);
-                }
                 await dbContext.SaveChangesAsync();
                 res = true;
             }
