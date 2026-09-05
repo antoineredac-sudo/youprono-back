@@ -42,6 +42,10 @@ namespace dotnet.core.thegoldenfan.Services
             public string InviteCode { get; set; } = null!;
             public DateTime CreatedDate { get; set; }
             public int MemberCount { get; set; }
+
+            // Qui a créé le groupe. Le site s'en sert pour reconnaître le groupe
+            // personnel d'un joueur sans avoir à deviner d'après son nom.
+            public Guid CreatorId { get; set; }
         }
 
         public class GroupMemberRankingResult
@@ -253,7 +257,8 @@ namespace dotnet.core.thegoldenfan.Services
                 Name = group.Name,
                 InviteCode = group.InviteCode,
                 CreatedDate = group.CreatedDate,
-                MemberCount = 1
+                MemberCount = 1,
+                CreatorId = group.CreatorId
             };
         }
 
@@ -289,7 +294,8 @@ namespace dotnet.core.thegoldenfan.Services
                 Name = group.Name,
                 InviteCode = group.InviteCode,
                 CreatedDate = group.CreatedDate,
-                MemberCount = group.Members.Count + 1
+                MemberCount = group.Members.Count + 1,
+                CreatorId = group.CreatorId
             };
         }
 
@@ -696,7 +702,8 @@ namespace dotnet.core.thegoldenfan.Services
                 Name = m.Group.Name,
                 InviteCode = m.Group.InviteCode,
                 CreatedDate = m.Group.CreatedDate,
-                MemberCount = m.Group.Members.Count
+                MemberCount = m.Group.Members.Count,
+                CreatorId = m.Group.CreatorId
             }).ToList();
         }
     }
