@@ -800,6 +800,8 @@ namespace dotnet.core.thegoldenfan.Services
             public int Rank { get; set; } //rank ordered by resultfinaltotal => expert coef
             public double Record { get; set; } //best score (resulttotal)
             public double Bonus { get; set; } //bonus at the moment
+            public int MatchesPlayed { get; set; } //pronostics notés du joueur
+            public int MatchesTotal { get; set; } //matchs du PSG depuis son premier pronostic
             public double ExpertCoef { get; set; } //best expert coef (resultfinaltotal)
         }
 
@@ -813,6 +815,9 @@ namespace dotnet.core.thegoldenfan.Services
                 .OrderByDescending(ob => ob.ResultFinalTotal)
                 .ToListAsync();
             res.Bonus = await userService.AttendanceBonusAsync(userId, teamId);
+            var assiduite = await userService.AttendanceAsync(userId, teamId);
+            res.MatchesPlayed = assiduite.Played;
+            res.MatchesTotal = assiduite.Total;
             if(matches!=null)
             {
                 var gbusers = matches.GroupBy(gb => gb.UserId);

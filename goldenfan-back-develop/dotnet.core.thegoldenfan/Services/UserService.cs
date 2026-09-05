@@ -23,7 +23,15 @@ namespace dotnet.core.thegoldenfan.Services
         }
 
 
-        public async Task<double> AttendanceBonusAsync(Guid userId, string teamId)
+        // Ce que le site affiche sous la forme « 6/7 » : les pronostics notés du
+        // joueur, et les matchs du PSG disputés depuis son tout premier pronostic.
+        public sealed class AttendanceResult
+        {
+            public int Played { get; set; }
+            public int Total { get; set; }
+        }
+
+        public async Task<AttendanceResult> AttendanceAsync(Guid userId, string teamId)
         {
             double totalPrediction = 0;
             double totalMatch = 0;
@@ -54,13 +62,23 @@ namespace dotnet.core.thegoldenfan.Services
                     totalMatch = matches.Count;
                 }
             }
-            double res = Math.Round((totalPrediction == 0 || totalMatch == 0 ? 1 : totalPrediction / totalMatch), 4);
-            return res;
+            return new AttendanceResult { Played = (int)totalPrediction, Total = (int)totalMatch };
+        }
+
+        // Conservé parce que UserStatsService range encore cette valeur en base
+        // (ResultBonus). Elle n'entre plus dans le coefficient expert.
+        public async Task<double> AttendanceBonusAsync(Guid userId, string teamId)
+        {
+            var a = await AttendanceAsync(userId, teamId);
+            return Math.Round((a.Played == 0 || a.Total == 0 ? 1 : (double)a.Played / a.Total), 4);
         }
 
 
         // --- Coefficient expert, calculé à la demande ---
-        // Moyenne de toutes les notes de match du joueur, plus son bonus d'assiduité.
+        // La moyenne de toutes les notes de match du joueur, et rien d'autre : le
+        // bonus d'assiduité a été retiré le 5 septembre. Il valait moins d'un point
+        // sur une moyenne d'environ 75, et il rendait le coefficient invérifiable —
+        // un joueur qui refaisait le calcul ne tombait pas sur le chiffre affiché.
         //
         // Pourquoi ne pas lire la valeur rangée en base (ResultFinalTotal) : elle n'est
         // écrite que lorsqu'un pronostic est noté. Un joueur qui saute un match ne
@@ -78,13 +96,11 @@ namespace dotnet.core.thegoldenfan.Services
 
             if (notes.Count == 0) { return 0; }
 
-            double bonus = await AttendanceBonusAsync(userId, teamId);
-            return Math.Round(notes.Average() + bonus, 4);
+            return Math.Round(notes.Average(), 4);
         }
 
         // Même calcul pour tout le monde d'un coup, pour les classements.
-        // Les moyennes sont obtenues en une seule requête ; seul le bonus reste
-        // individuel, puisqu'il dépend de la date du premier pronostic de chacun.
+        // Une seule requête suffit désormais : sans bonus, plus rien n'est individuel.
         public async Task<Dictionary<Guid, double>> ExpertCoefAllAsync(string teamId)
         {
             var moyennes = await dbContext
@@ -97,8 +113,7 @@ namespace dotnet.core.thegoldenfan.Services
             var res = new Dictionary<Guid, double>();
             foreach (var item in moyennes)
             {
-                double bonus = await AttendanceBonusAsync(item.UserId, teamId);
-                res[item.UserId] = Math.Round(item.Moyenne + bonus, 4);
+                res[item.UserId] = Math.Round(item.Moyenne, 4);
             }
             return res;
         }
