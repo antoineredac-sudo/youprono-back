@@ -83,6 +83,23 @@ namespace dotnet.core.thegoldenfan.controllers
             return res;
         }
 
+        // Le salon du groupe, pour un match donné.
+        [HttpGet("Salon/{teamId}/{matchId}/{userId}/{groupId}")]
+        public async Task<ResponseModel<SalonResult>> SalonAsync(string teamId, string matchId, Guid userId, Guid groupId)
+        {
+            ResponseModel<SalonResult> res = ResponseModel<SalonResult>.CreateDefault();
+            try
+            {
+                var salon = await service.SalonAsync(teamId, matchId, userId, groupId);
+                res = new ResponseModel<SalonResult>(0, salon);
+            }
+            catch (Exception ex)
+            {
+                res = ResponseModel<SalonResult>.Exception(ex);
+            }
+            return res;
+        }
+
         [HttpGet("ByUserId/{userId}")]
         public async Task<ResponseModel<List<GroupResult>>> ByUserIdAsync(Guid userId)
         {
