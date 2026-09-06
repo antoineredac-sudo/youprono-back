@@ -30,6 +30,19 @@ namespace dotnet.core.thegoldenfan.Services
         // vingtaine d'heures.
         private const int ChampionDisplayHours = 24;
 
+        // --- Les recompenses de groupe ---
+        // Seuils de points cumules donnant droit a chaque metal, du bronze au diamant.
+        private static readonly int[] MedalThresholds = { 15, 22, 29, 36, 43 };
+        // Ce que chaque metal apporte a la coupe.
+        private static readonly int[] MedalValues = { 3, 5, 7, 9, 11 };
+        private static readonly string[] MedalNames = { "Bronze", "Argent", "Or", "Platine", "Diamant" };
+        // Une coupe se remplit a 12 points. Le diamant vaut 11 : aucune coupe ne peut
+        // donc etre remplie en un seul mini-championnat.
+        private const int CupTarget = 12;
+        // En dessous de trois membres, pas de medaille : un duel se felicite, il ne se
+        // recompense pas.
+        private const int MinMembersForMedal = 3;
+
         public class CreateGroupInput
         {
             public string Name { get; set; } = null!;
@@ -452,6 +465,158 @@ namespace dotnet.core.thegoldenfan.Services
                 ChampionName = championName,
                 Ranking = ranking
             };
+        }
+
+
+        // --- Le palmares d'un joueur ---
+        // Rejoue tous les cycles CLOS de tous ses groupes et en deduit les medailles.
+        // Rien n'est stocke : le decoupage en cycles est deterministe, donc le palmares
+        // se recalcule a la demande. Un seuil qui bouge se repercute partout, et aucune
+        // ecriture irreversible n'est faite.
+        public class MedalResult
+        {
+            public Guid GroupId { get; set; }
+            public string GroupName { get; set; } = null!;
+            public int CycleNumber { get; set; }
+            public DateTime EndDate { get; set; }
+            public int MemberCount { get; set; }
+            public int Points { get; set; }
+            public int Rank { get; set; }
+            public bool IsChampion { get; set; }
+            public int MetalLevel { get; set; }
+            public string? MetalName { get; set; }
+            public int MetalValue { get; set; }
+        }
+
+        public class TrophiesResult
+        {
+            public List<MedalResult> Medals { get; set; } = new();
+            public int[] MedalCounts { get; set; } = new int[5];
+            public int TotalPoints { get; set; }
+            public int CupsCompleted { get; set; }
+            public int CupProgress { get; set; }
+            public int CupTarget { get; set; }
+        }
+
+        private static int MetalLevelFor(int points)
+        {
+            for (int i = MedalThresholds.Length - 1; i >= 0; i--)
+            {
+                if (points >= MedalThresholds[i]) { return i + 1; }
+            }
+            return 0;
+        }
+
+        public async Task<TrophiesResult> TrophiesAsync(Guid userId)
+        {
+            var result = new TrophiesResult { CupTarget = CupTarget };
+
+            var groups = await dbContext.Groups
+                .Include(i => i.Members)
+                .Where(w => w.Members.Any(a => a.UserId.Equals(userId)))
+                .ToListAsync();
+
+            DateTime now = DateTime.UtcNow;
+
+            foreach (var group in groups)
+            {
+                var allMatches = await dbContext.Matches
+                    .Where(w => w.DateTime >= group.CreatedDate)
+                    .OrderBy(o => o.DateTime)
+                    .Select(s => new { s.Id, s.Status, s.DateTime })
+                    .ToListAsync();
+
+                var memberIds = group.Members.Select(m => m.UserId).ToList();
+                var allIds = allMatches.Select(s => s.Id).ToList();
+
+                var predictions = await dbContext.UserMatches
+                    .Where(w => memberIds.Contains(w.UserId) && allIds.Contains(w.MatchId))
+                    .Select(s => new { s.UserId, s.MatchId, s.ResultTotal })
+                    .ToListAsync();
+
+                for (int c = 0; ; c++)
+                {
+                    var block = allMatches.Skip(c * SeasonLength).Take(SeasonLength).ToList();
+                    if (block.Count < SeasonLength) { break; }
+                    if (block.Any(a => !IsPlayed(a.Status))) { break; }
+                    if (now < block.Last().DateTime.AddHours(ChampionDisplayHours)) { break; }
+
+                    // Meme bareme que le classement de groupe : ancre sur le dernier present.
+                    var points = memberIds.ToDictionary(k => k, v => 0);
+                    foreach (var m in block)
+                    {
+                        var noted = predictions
+                            .Where(w => w.MatchId.Equals(m.Id) && w.ResultTotal.HasValue)
+                            .OrderByDescending(o => o.ResultTotal.Value)
+                            .ToList();
+
+                        int rank = 0;
+                        for (int i = 0; i < noted.Count; i++)
+                        {
+                            if (i > 0 && noted[i].ResultTotal.Value != noted[i - 1].ResultTotal.Value)
+                            { rank = i; }
+
+                            int score = noted.Count - rank + 1;
+                            if (score < 2) { score = 2; }
+                            points[noted[i].UserId] += score;
+                        }
+                    }
+
+                    // Le metal vient des points de chacun, le rang servant de plafond :
+                    // personne ne porte le metal de celui qui l'a devance. A egalite de
+                    // points, meme metal et le plafond ne descend pas.
+                    var ordered = points.OrderByDescending(o => o.Value).ToList();
+                    int plafond = MedalThresholds.Length;
+                    int prevPoints = int.MinValue;
+                    int prevLevel = 0;
+                    int position = 0;
+
+                    foreach (var entry in ordered)
+                    {
+                        position++;
+                        int level;
+                        if (entry.Value == prevPoints)
+                        {
+                            level = prevLevel;
+                        }
+                        else
+                        {
+                            level = MetalLevelFor(entry.Value);
+                            if (level > plafond) { level = plafond; }
+                            plafond = level > 0 ? level - 1 : 0;
+                        }
+                        prevPoints = entry.Value;
+                        prevLevel = level;
+
+                        if (group.Members.Count < MinMembersForMedal) { level = 0; }
+
+                        if (!entry.Key.Equals(userId)) { continue; }
+
+                        var medal = new MedalResult
+                        {
+                            GroupId = group.Id,
+                            GroupName = group.Name,
+                            CycleNumber = c + 1,
+                            EndDate = block.Last().DateTime,
+                            MemberCount = group.Members.Count,
+                            Points = entry.Value,
+                            Rank = position,
+                            IsChampion = position == 1 && entry.Value > 0,
+                            MetalLevel = level,
+                            MetalName = level > 0 ? MedalNames[level - 1] : null,
+                            MetalValue = level > 0 ? MedalValues[level - 1] : 0
+                        };
+                        result.Medals.Add(medal);
+                        if (level > 0) { result.MedalCounts[level - 1]++; }
+                        result.TotalPoints += medal.MetalValue;
+                    }
+                }
+            }
+
+            result.Medals = result.Medals.OrderByDescending(o => o.EndDate).ToList();
+            result.CupsCompleted = result.TotalPoints / CupTarget;
+            result.CupProgress = result.TotalPoints % CupTarget;
+            return result;
         }
 
         // --- Le salon du groupe ---
