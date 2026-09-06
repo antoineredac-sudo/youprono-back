@@ -115,5 +115,21 @@ namespace dotnet.core.thegoldenfan.controllers
             }
             return res;
         }
+
+        [HttpGet("Trophies/{userId}")]
+        public async Task<ResponseModel<TrophiesResult>> TrophiesAsync(Guid userId)
+        {
+            ResponseModel<TrophiesResult> res = ResponseModel<TrophiesResult>.CreateDefault();
+            try
+            {
+                var result = await service.TrophiesAsync(userId);
+                res = new ResponseModel<TrophiesResult>(0, result);
+            }
+            catch (Exception ex)
+            {
+                res = ResponseModel<TrophiesResult>.Exception(ex);
+            }
+            return res;
+        }
     }
 }
