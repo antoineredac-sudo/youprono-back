@@ -354,7 +354,6 @@ namespace dotnet.core.thegoldenfan.Services
                 .ToListAsync();
 
             DateTime now = DateTime.UtcNow;
-            int memberCount = group.Members.Count;
 
             // Les matchs sont découpés en cycles de 5. On avance au cycle suivant
             // seulement quand le cycle courant est complet (5 matchs joués) ET que
@@ -388,9 +387,10 @@ namespace dotnet.core.thegoldenfan.Services
             var points = memberIds.ToDictionary(k => k, v => 0);
             var played = memberIds.ToDictionary(k => k, v => 0);
 
-            // Barème positionnel calé sur la TAILLE DU GROUPE, pas sur le nombre de présents :
-            // dans un groupe de 5, le vainqueur du soir marque 6 points et le dernier
-            // participant 2, que trois joueurs aient joué ou cinq. L'absent marque 0.
+            // Barème positionnel ancré sur le DERNIER PRÉSENT, pas sur la taille du groupe :
+            // le dernier participant du soir marque 2 points, et chaque place au-dessus
+            // en vaut un de plus. L'absent marque 0 et n'occupe aucun rang. Gagner seul
+            // dans un groupe de dix rapporte donc 2 points, pas 11.
             foreach (var m in playedMatches)
             {
                 var noted = predictions
@@ -405,7 +405,7 @@ namespace dotnet.core.thegoldenfan.Services
                     if (i > 0 && noted[i].ResultTotal.Value != noted[i - 1].ResultTotal.Value)
                     { rank = i; }
 
-                    int score = memberCount + 1 - rank;
+                    int score = noted.Count - rank + 1;
                     if (score < 2) { score = 2; }
 
                     points[noted[i].UserId] += score;
@@ -604,9 +604,8 @@ namespace dotnet.core.thegoldenfan.Services
             }
 
             // Le classement du match et les points du mini-championnat, une fois le
-            // match noté. Barème positionnel calé sur la taille du groupe, exactement
-            // comme dans le classement de groupe : deux notes identiques donnent le
-            // même rang, donc les mêmes points.
+            // match noté. Même barème que le classement de groupe : ancré sur le dernier
+            // présent, deux notes identiques donnant le même rang donc les mêmes points.
             if (scored)
             {
                 var noted = members
@@ -622,7 +621,7 @@ namespace dotnet.core.thegoldenfan.Services
 
                     noted[i].MatchRank = rank + 1;
 
-                    int points = group.Members.Count + 1 - rank;
+                    int points = noted.Count - rank + 1;
                     if (points < 2) { points = 2; }
                     noted[i].GroupPoints = points;
                 }
