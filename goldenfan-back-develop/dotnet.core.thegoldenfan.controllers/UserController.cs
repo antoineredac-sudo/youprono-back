@@ -46,6 +46,40 @@ namespace dotnet.core.thegoldenfan.controllers
             return res;
         }
 
+        // Le site l'interroge apres chaque connexion : si le joueur n'a pas
+        // d'adresse, il lui presente l'ecran qui la demande.
+        [HttpGet("Email/{userId}")]
+        public async Task<ResponseModel<EmailStatusResult>> EmailStatusAsync(Guid userId)
+        {
+            ResponseModel<EmailStatusResult> res = ResponseModel<EmailStatusResult>.CreateDefault();
+            try
+            {
+                var result = await service.EmailStatusAsync(userId);
+                res = new ResponseModel<EmailStatusResult>(0, result);
+            }
+            catch (Exception ex)
+            {
+                res = ResponseModel<EmailStatusResult>.Exception(ex);
+            }
+            return res;
+        }
+
+        [HttpPost("Email/{userId}")]
+        public async Task<ResponseModel<bool>> SetEmailAsync([FromBody] EmailInputModel input, Guid userId)
+        {
+            ResponseModel<bool> res = ResponseModel<bool>.CreateDefault();
+            try
+            {
+                var result = await service.SetEmailAsync(userId, input);
+                res = new ResponseModel<bool>(0, result);
+            }
+            catch (Exception ex)
+            {
+                res = ResponseModel<bool>.Exception(ex);
+            }
+            return res;
+        }
+
         [HttpPost("Login")]
         public async Task<ResponseModel<string>> LoginAsync(LoginInputModel input)
         {
