@@ -1011,6 +1011,9 @@ namespace dotnet.core.thegoldenfan.Services
             public KopPronoResult? Prono { get; set; }
             public SalonRealResult? Real { get; set; }
 
+            // Le onze officiel, celui du coach. Vide tant qu'il n'est pas saisi.
+            public List<KopPlayerResult> OfficialEleven { get; set; } = new();
+
             public List<KopMatchRowResult> LastMatch { get; set; } = new();
             public List<KopRankRowResult> Ranking { get; set; } = new();
         }
@@ -1109,6 +1112,19 @@ namespace dotnet.core.thegoldenfan.Services
             bool scored = IsScored(match.Status);
 
             result.MatchState = scored ? "results" : (hasComposition ? "composition" : "closed");
+
+            foreach (var player in officialPlayers)
+            {
+                if (player.Id == null) { continue; }
+                result.OfficialEleven.Add(new KopPlayerResult
+                {
+                    Id = player.Id,
+                    FirstName = player.FirstName,
+                    LastName = player.LastName,
+                    ChoiceCount = 0,
+                    Found = true
+                });
+            }
 
             // --- Bloc 1 : le prono du kop ---
             var predictions = await dbContext.UserMatches
