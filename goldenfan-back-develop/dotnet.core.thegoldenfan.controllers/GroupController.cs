@@ -116,6 +116,42 @@ namespace dotnet.core.thegoldenfan.controllers
             return res;
         }
 
+        // La page d'un kop. Consultable sans compte : c'est ce que le fondateur
+        // partage sur X, et ce qu'un visiteur voit avant de decider de jouer.
+        [HttpGet("Kop/{teamId}/{groupId}")]
+        public async Task<ResponseModel<KopResult>> KopPublicAsync(string teamId, Guid groupId)
+        {
+            ResponseModel<KopResult> res = ResponseModel<KopResult>.CreateDefault();
+            try
+            {
+                var result = await service.KopAsync(teamId, groupId, null);
+                res = new ResponseModel<KopResult>(0, result);
+            }
+            catch (Exception ex)
+            {
+                res = ResponseModel<KopResult>.Exception(ex);
+            }
+            return res;
+        }
+
+        // La meme page pour un joueur connecte : sa ligne est marquee, ce qui permet
+        // au site de centrer le classement sur lui.
+        [HttpGet("Kop/{teamId}/{groupId}/{userId}")]
+        public async Task<ResponseModel<KopResult>> KopAsync(string teamId, Guid groupId, Guid userId)
+        {
+            ResponseModel<KopResult> res = ResponseModel<KopResult>.CreateDefault();
+            try
+            {
+                var result = await service.KopAsync(teamId, groupId, userId);
+                res = new ResponseModel<KopResult>(0, result);
+            }
+            catch (Exception ex)
+            {
+                res = ResponseModel<KopResult>.Exception(ex);
+            }
+            return res;
+        }
+
         // La liste des kops de supporters, triee par nombre de membres.
         [HttpGet("Kops/{userId}")]
         public async Task<ResponseModel<KopListResult>> KopsAsync(Guid userId)
