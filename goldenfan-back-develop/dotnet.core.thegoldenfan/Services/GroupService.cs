@@ -1003,6 +1003,9 @@ namespace dotnet.core.thegoldenfan.Services
             // "none" (aucun match cloture), "closed", "composition", "results".
             public string? MatchId { get; set; }
             public string? MatchLabel { get; set; }
+
+            // L'adversaire seul, pour le titre « Les pronos du kop face à X ».
+            public string? OpponentName { get; set; }
             public string MatchState { get; set; } = "none";
 
             public KopPronoResult? Prono { get; set; }
@@ -1096,6 +1099,7 @@ namespace dotnet.core.thegoldenfan.Services
             result.MatchId = match.Id;
             result.MatchLabel = (detail.HomeTeam != null ? detail.HomeTeam.Name : "?")
                               + " — " + (detail.AwayTeam != null ? detail.AwayTeam.Name : "?");
+            result.OpponentName = opponentSide.Name;
 
             var officialPlayers = teamSide.Players
                 .Where(w => !(w.Position != null && w.Position.Trim().Equals("SUBSTITUTE", StringComparison.OrdinalIgnoreCase)))
