@@ -218,6 +218,11 @@ namespace dotnet.core.thegoldenfan.Services
 
         public class SalonResult
         {
+            // Le nombre de joueurs du SITE ENTIER ayant pronostique ce match. C'est le
+            // denominateur de « choisi n fois » : dans un groupe de six, « 4/6 » ne dit
+            // pas grand-chose ; sur l'ensemble des participants, le chiffre a du poids.
+            public int ParticipantCount { get; set; }
+
             public string MatchId { get; set; } = null!;
             public DateTime DateTime { get; set; }
             public string? Status { get; set; }
@@ -773,11 +778,19 @@ namespace dotnet.core.thegoldenfan.Services
                 .Include(i => i.UserPlayerForMatches).ThenInclude(i => i.Person)
                 .ToListAsync();
 
-            // Le dénominateur de « choisi n fois » : les membres qui ont réellement joué.
+            // Le dénominateur de « choisi n fois » : tous les joueurs du site ayant
+            // pronostiqué ce match, pas seulement les membres du groupe.
             int predictionCount = predictions.Count;
 
+            var toutesPredictions = await dbContext.UserMatches
+                .Where(w => w.MatchId.Equals(matchId) && w.TeamId.Equals(teamId))
+                .Include(i => i.UserPlayerForMatches)
+                .ToListAsync();
+
+            int participantCount = toutesPredictions.Count;
+
             var choiceCount = new Dictionary<string, int>();
-            foreach (var prediction in predictions)
+            foreach (var prediction in toutesPredictions)
             {
                 foreach (var pick in prediction.UserPlayerForMatches)
                 {
@@ -896,6 +909,7 @@ namespace dotnet.core.thegoldenfan.Services
                 GroupName = group.Name,
                 MemberCount = group.Members.Count,
                 PredictionCount = predictionCount,
+                ParticipantCount = participantCount,
                 HasOfficialComposition = hasComposition,
                 Members = members
             };
