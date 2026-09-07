@@ -1,6 +1,8 @@
 using dotnet.core.thegoldenfan;
+using dotnet.core.thegoldenfan.Dbs;
 using dotnet.core.utils.Helpers;
 using dotnet.core.utils.server;
+using Microsoft.EntityFrameworkCore;
 
 
 ProgramHelper.Init();
@@ -15,6 +17,28 @@ builder.Services.AddSwaggerService();
 
 
 var app = builder.Build();
+
+// --- Mise a niveau de la base au demarrage ---
+// La colonne "Type" de la table "Group" distingue les groupes d'amis des kops
+// de supporters. IF NOT EXISTS : l'instruction ne fait rien si la colonne est
+// deja la, donc elle peut tourner a chaque demarrage sans risque.
+// Le try/catch garantit qu'un echec ici n'empeche jamais l'application de
+// demarrer : le jeu continue de tourner, seuls les kops seraient indisponibles.
+using (var scope = app.Services.CreateScope())
+{
+    try
+    {
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        db.Database.ExecuteSqlRaw(
+            "ALTER TABLE \"Group\" ADD COLUMN IF NOT EXISTS \"Type\" character varying(20) NOT NULL DEFAULT 'amis';");
+        Console.WriteLine("[YouProno] Colonne Group.Type verifiee.");
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine("[YouProno] Colonne Group.Type - echec : " + ex.Message);
+    }
+}
+
 app.UseSwaggerService();
 app.UseCors(dotnet.core.utils.server.ConfigureService.CorsOrigins);
 app.MapControllers();
