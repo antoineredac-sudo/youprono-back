@@ -1209,6 +1209,44 @@ namespace dotnet.core.thegoldenfan.Services
             return result;
         }
 
+        // --- Ce que designe un code d'invitation ---
+        // Lue a l'atterrissage d'un lien partage, AVANT toute adhesion : le site a
+        // besoin de savoir s'il s'agit d'un kop ou d'un groupe d'amis, et sous quel
+        // nom, pour proposer d'entrer au lieu de faire entrer d'office.
+        // Elle n'ecrit rien et ne revele que ce qui figure deja dans le lien.
+        public class GroupByCodeResult
+        {
+            public Guid Id { get; set; }
+            public string Name { get; set; } = null!;
+            public string Type { get; set; } = TypeAmis;
+            public int MemberCount { get; set; }
+            public bool IsFull { get; set; }
+            public bool AlreadyMember { get; set; }
+        }
+
+        public async Task<GroupByCodeResult> ByCodeAsync(string inviteCode, Guid? userId)
+        {
+            string src = "GroupService.ByCodeAsync";
+            if (StringHelper.IsNull(inviteCode)) { throw BaseException.InvalidModel(-1, src); }
+
+            string code = inviteCode.Trim();
+
+            var group = await dbContext.Groups
+                .Include(i => i.Members)
+                .FirstOrDefaultAsync(w => w.InviteCode.Equals(code));
+            if (group == null) { throw BaseException.NotFound(-2, src); }
+
+            return new GroupByCodeResult
+            {
+                Id = group.Id,
+                Name = group.Name,
+                Type = group.Type,
+                MemberCount = group.Members.Count,
+                IsFull = !IsKop(group.Type) && group.Members.Count >= MaxMembers,
+                AlreadyMember = userId.HasValue && group.Members.Any(a => a.UserId.Equals(userId.Value))
+            };
+        }
+
         // --- La liste des kops de supporters ---
         // Triee par nombre de membres, du plus gros au plus petit. Les kops d'un seul
         // membre n'y figurent pas : ils s'effacent d'eux-memes sans qu'on ait a les
