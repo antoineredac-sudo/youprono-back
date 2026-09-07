@@ -169,6 +169,69 @@ namespace dotnet.core.thegoldenfan.Services
         {
             public string DisplayName { get; set; } = null!;
             public string Password { get; set; } = null!;
+            public string Email { get; set; } = null!;
+
+            // Accord explicite pour le rappel avant match. Sans lui, l'adresse ne
+            // sert qu'a recuperer son compte.
+            public bool EmailOptIn { get; set; }
+        }
+
+        public sealed class EmailInputModel
+        {
+            public string Email { get; set; } = null!;
+            public bool EmailOptIn { get; set; }
+        }
+
+        public sealed class EmailStatusResult
+        {
+            public bool HasEmail { get; set; }
+            public string? Email { get; set; }
+            public bool EmailOptIn { get; set; }
+        }
+
+        // Controle volontairement large : il attrape la faute de frappe evidente
+        // sans rejeter une adresse valide mais inhabituelle. La verification reelle
+        // se fera par le lien de confirmation, quand le service d'envoi existera.
+        private static bool EmailPlausible(string? email)
+        {
+            if (StringHelper.IsNull(email)) { return false; }
+            string e = email!.Trim();
+            int at = e.IndexOf('@');
+            if (at <= 0 || at != e.LastIndexOf('@')) { return false; }
+            string domaine = e.Substring(at + 1);
+            return domaine.Length >= 3 && domaine.Contains('.')
+                   && !domaine.StartsWith(".") && !domaine.EndsWith(".")
+                   && !e.Contains(' ');
+        }
+
+        // Ce que le site demande apres chaque connexion, pour savoir s'il doit
+        // reclamer l'adresse a un joueur inscrit avant cette version.
+        public async Task<EmailStatusResult> EmailStatusAsync(Guid userId)
+        {
+            string src = "UserService.EmailStatusAsync";
+            var user = await dbContext.Users.FirstOrDefaultAsync(w => w.Id.Equals(userId));
+            if (user == null) { throw BaseException.NotFound(-1, src); }
+
+            return new EmailStatusResult
+            {
+                HasEmail = !StringHelper.IsNull(user.Email),
+                Email = user.Email,
+                EmailOptIn = user.EmailOptIn
+            };
+        }
+
+        public async Task<bool> SetEmailAsync(Guid userId, EmailInputModel model)
+        {
+            string src = "UserService.SetEmailAsync";
+            if (!EmailPlausible(model.Email)) { throw BaseException.InvalidModel(-1, src); }
+
+            var user = await dbContext.Users.FirstOrDefaultAsync(w => w.Id.Equals(userId));
+            if (user == null) { throw BaseException.NotFound(-2, src); }
+
+            user.Email = model.Email.Trim();
+            user.EmailOptIn = model.EmailOptIn;
+            await dbContext.SaveChangesAsync();
+            return true;
         }
 
         public async Task<string> RegisterAsync(RegisterInputModel model)
@@ -176,6 +239,10 @@ namespace dotnet.core.thegoldenfan.Services
             string src = "UserService.RegisterAsync";
             if (StringHelper.IsNull(model.DisplayName) || StringHelper.IsNull(model.Password))
             { throw BaseException.InvalidModel(-1, src); }
+
+            // L'adresse est obligatoire depuis cette version : sans elle, un joueur
+            // qui oublie son pseudo perd son compte sans aucun recours.
+            if (!EmailPlausible(model.Email)) { throw BaseException.InvalidModel(-3, src); }
 
             var normalized = StringHelper.NormalizeString(model.DisplayName);
             var existing = await dbContext.Users.FirstOrDefaultAsync(w => w.NormalizedDisplayName!.Equals(normalized));
@@ -187,6 +254,8 @@ namespace dotnet.core.thegoldenfan.Services
                 DisplayName = model.DisplayName,
                 NormalizedDisplayName = normalized,
                 Password = PasswordHelper.HashPassword(model.Password),
+                Email = model.Email.Trim(),
+                EmailOptIn = model.EmailOptIn,
                 DateCreated = DateTime.UtcNow
             };
             dbContext.Users.Add(newObj);
