@@ -504,6 +504,7 @@ public partial class AppDbContext : DbContext
             entity.Property(e => e.Id).ValueGeneratedNever();
             entity.Property(e => e.Name).HasMaxLength(100);
             entity.Property(e => e.InviteCode).HasMaxLength(10);
+            entity.Property(e => e.Type).HasMaxLength(20);
             entity.Property(e => e.CreatedDate).HasColumnType("timestamp without time zone");
 
             entity.HasOne(d => d.Creator).WithMany()

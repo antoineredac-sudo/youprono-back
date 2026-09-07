@@ -11,6 +11,11 @@ public partial class Group
 
     public string InviteCode { get; set; } = null!;
 
+    // "amis" = groupe d'amis, plafonne a 10 membres, points et medailles.
+    // "kop"  = kop de supporters, sans plafond, ni points ni medailles.
+    // Valeur par defaut en base : "amis". Tous les groupes existants le sont.
+    public string Type { get; set; } = "amis";
+
     public Guid CreatorId { get; set; }
 
     public DateTime CreatedDate { get; set; }
