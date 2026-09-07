@@ -43,9 +43,48 @@ namespace dotnet.core.thegoldenfan.Services
         // recompense pas.
         private const int MinMembersForMedal = 3;
 
+        // --- Les deux natures de groupe ---
+        // "amis" : le groupe historique. Dix membres au maximum, bareme positionnel,
+        //          medailles et coupes.
+        // "kop"  : le kop de supporters. Aucun plafond de membres, aucun point,
+        //          aucune medaille. On s'y situe au coefficient expert, rien de plus.
+        // Un joueur peut appartenir a plusieurs groupes d'amis, mais a un seul kop.
+        public const string TypeAmis = "amis";
+        public const string TypeKop = "kop";
+
+        // Au-dela, le nom ne tient plus dans le message de partage sur X.
+        private const int KopNameMaxLength = 30;
+
+        // Un kop d'un seul membre n'est pas affiche dans la liste : il disparait tout
+        // seul sans qu'on ait a le supprimer, et son lien direct continue de marcher.
+        private const int KopMinMembersToList = 2;
+
+        private static string NormalizeType(string? type)
+        {
+            return string.Equals((type ?? "").Trim(), TypeKop, StringComparison.OrdinalIgnoreCase)
+                ? TypeKop : TypeAmis;
+        }
+
+        private static bool IsKop(string? type)
+        {
+            return string.Equals((type ?? "").Trim(), TypeKop, StringComparison.OrdinalIgnoreCase);
+        }
+
+        // Un joueur n'appartient qu'a un seul kop a la fois. Pour en changer, il doit
+        // quitter le sien d'abord.
+        private async Task EnsureNoOtherKopAsync(Guid userId, string src)
+        {
+            bool dejaDansUnKop = await dbContext.GroupMembers
+                .AnyAsync(w => w.UserId.Equals(userId) && w.Group.Type == TypeKop);
+            if (dejaDansUnKop) { throw BaseException.AlreadyInDb(-9, src); }
+        }
+
         public class CreateGroupInput
         {
             public string Name { get; set; } = null!;
+
+            // "amis" (par defaut) ou "kop". Absent ou inconnu : groupe d'amis.
+            public string? Type { get; set; }
         }
 
         public class GroupResult
@@ -59,6 +98,9 @@ namespace dotnet.core.thegoldenfan.Services
             // Qui a créé le groupe. Le site s'en sert pour reconnaître le groupe
             // personnel d'un joueur sans avoir à deviner d'après son nom.
             public Guid CreatorId { get; set; }
+
+            // "amis" ou "kop".
+            public string Type { get; set; } = TypeAmis;
         }
 
         public class GroupMemberRankingResult
@@ -82,6 +124,7 @@ namespace dotnet.core.thegoldenfan.Services
             public Guid Id { get; set; }
             public string Name { get; set; } = null!;
             public string InviteCode { get; set; } = null!;
+            public string Type { get; set; } = TypeAmis;
             public DateTime CreatedDate { get; set; }
             public bool IsSeasonComplete { get; set; }
             public int MatchesCounted { get; set; }
@@ -240,6 +283,15 @@ namespace dotnet.core.thegoldenfan.Services
             var creator = await dbContext.Users.FirstOrDefaultAsync(w => w.Id.Equals(creatorId));
             if (creator == null) { throw BaseException.NotFound(-2, src); }
 
+            string type = NormalizeType(input.Type);
+            string name = input.Name.Trim();
+
+            if (IsKop(type))
+            {
+                if (name.Length > KopNameMaxLength) { throw BaseException.InvalidModel(-5, src); }
+                await EnsureNoOtherKopAsync(creatorId, src);
+            }
+
             string inviteCode;
             do { inviteCode = GenerateInviteCode(); }
             while (await dbContext.Groups.AnyAsync(w => w.InviteCode.Equals(inviteCode)));
@@ -247,8 +299,9 @@ namespace dotnet.core.thegoldenfan.Services
             var group = new Group
             {
                 Id = Guid.NewGuid(),
-                Name = input.Name,
+                Name = name,
                 InviteCode = inviteCode,
+                Type = type,
                 CreatorId = creatorId,
                 CreatedDate = DateTime.UtcNow
             };
@@ -271,7 +324,8 @@ namespace dotnet.core.thegoldenfan.Services
                 InviteCode = group.InviteCode,
                 CreatedDate = group.CreatedDate,
                 MemberCount = 1,
-                CreatorId = group.CreatorId
+                CreatorId = group.CreatorId,
+                Type = group.Type
             };
         }
 
@@ -289,8 +343,16 @@ namespace dotnet.core.thegoldenfan.Services
             if (group.Members.Any(m => m.UserId.Equals(userId)))
             { throw BaseException.AlreadyInDb(-3, src); }
 
-            if (group.Members.Count >= MaxMembers)
-            { throw BaseException.InvalidModel(-4, src); }
+            // Le plafond des dix ne concerne que les groupes d'amis. Un kop n'en a pas,
+            // mais on n'y entre que si l'on n'appartient a aucun autre kop.
+            if (IsKop(group.Type))
+            {
+                await EnsureNoOtherKopAsync(userId, src);
+            }
+            else if (group.Members.Count >= MaxMembers)
+            {
+                throw BaseException.InvalidModel(-4, src);
+            }
 
             dbContext.GroupMembers.Add(new GroupMember
             {
@@ -308,7 +370,8 @@ namespace dotnet.core.thegoldenfan.Services
                 InviteCode = group.InviteCode,
                 CreatedDate = group.CreatedDate,
                 MemberCount = group.Members.Count + 1,
-                CreatorId = group.CreatorId
+                CreatorId = group.CreatorId,
+                Type = group.Type
             };
         }
 
@@ -456,6 +519,7 @@ namespace dotnet.core.thegoldenfan.Services
                 Id = group.Id,
                 Name = group.Name,
                 InviteCode = group.InviteCode,
+                Type = group.Type,
                 CreatedDate = group.CreatedDate,
                 IsSeasonComplete = isComplete,
                 MatchesCounted = cycleMatches.Count,
@@ -511,9 +575,10 @@ namespace dotnet.core.thegoldenfan.Services
         {
             var result = new TrophiesResult { CupTarget = CupTarget };
 
+            // Les kops sont ecartes : on n'y gagne ni point ni medaille.
             var groups = await dbContext.Groups
                 .Include(i => i.Members)
-                .Where(w => w.Members.Any(a => a.UserId.Equals(userId)))
+                .Where(w => w.Members.Any(a => a.UserId.Equals(userId)) && w.Type != TypeKop)
                 .ToListAsync();
 
             DateTime now = DateTime.UtcNow;
@@ -639,6 +704,16 @@ namespace dotnet.core.thegoldenfan.Services
 
             if (StringHelper.IsNull(teamId) || StringHelper.IsNull(matchId))
             { throw BaseException.InvalidModel(-1, src); }
+
+            // Le salon deplie le pronostic et la composition de chaque membre : il est
+            // taille pour dix personnes. Un kop a sa propre page, et cette route lui
+            // est fermee plutot que de servir une reponse de plusieurs centaines de
+            // lignes.
+            var typeDuGroupe = await dbContext.Groups
+                .Where(w => w.Id.Equals(groupId))
+                .Select(s => s.Type)
+                .FirstOrDefaultAsync();
+            if (IsKop(typeDuGroupe)) { throw BaseException.InvalidModel(-9, src); }
 
             var match = await dbContext.Matches
                 .Include(i => i.Place)
@@ -852,6 +927,111 @@ namespace dotnet.core.thegoldenfan.Services
             return result;
         }
 
+        // --- La liste des kops de supporters ---
+        // Triee par nombre de membres, du plus gros au plus petit. Les kops d'un seul
+        // membre n'y figurent pas : ils s'effacent d'eux-memes sans qu'on ait a les
+        // supprimer, et le lien direct de leur fondateur continue de fonctionner.
+        public class KopListItemResult
+        {
+            public Guid Id { get; set; }
+            public string Name { get; set; } = null!;
+            public string InviteCode { get; set; } = null!;
+            public int MemberCount { get; set; }
+
+            // La meilleure note du kop sur le dernier match note, avec son auteur.
+            // C'est ce qui distingue un kop vivant d'un kop endormi.
+            public double? BestScore { get; set; }
+            public string? BestScoreName { get; set; }
+        }
+
+        public class KopListResult
+        {
+            // Le kop du joueur, s'il en a un. Le site s'en sert pour afficher
+            // « Quitte ton kop pour en rejoindre un autre » au lieu des boutons.
+            public Guid? MyKopId { get; set; }
+            public string? MyKopName { get; set; }
+            public List<KopListItemResult> Kops { get; set; } = new();
+        }
+
+        public async Task<KopListResult> KopListAsync(Guid userId)
+        {
+            var result = new KopListResult();
+
+            var kops = await dbContext.Groups
+                .Include(i => i.Members).ThenInclude(i => i.User)
+                .Where(w => w.Type == TypeKop)
+                .ToListAsync();
+
+            var mien = kops.FirstOrDefault(k => k.Members.Any(m => m.UserId.Equals(userId)));
+            if (mien != null)
+            {
+                result.MyKopId = mien.Id;
+                result.MyKopName = mien.Name;
+            }
+
+            // Le dernier match note, tous kops confondus : une seule requete pour toute
+            // la liste plutot qu'une par kop. Le filtre sur le statut se fait en memoire
+            // pour rester coherent avec IsPlayed, qui ignore la casse.
+            var dernierMatch = (await dbContext.Matches
+                .OrderByDescending(o => o.DateTime)
+                .Select(s => new { s.Id, s.Status, s.DateTime })
+                .Take(30)
+                .ToListAsync())
+                .FirstOrDefault(f => IsPlayed(f.Status));
+
+            var notes = new Dictionary<Guid, double>();
+            if (dernierMatch != null)
+            {
+                var tousMembres = kops.SelectMany(k => k.Members).Select(m => m.UserId).Distinct().ToList();
+                var brutes = await dbContext.UserMatches
+                    .Where(w => tousMembres.Contains(w.UserId)
+                             && w.MatchId.Equals(dernierMatch.Id)
+                             && w.ResultTotal.HasValue)
+                    .Select(s => new { s.UserId, Score = s.ResultTotal.Value })
+                    .ToListAsync();
+
+                foreach (var b in brutes) { notes[b.UserId] = b.Score; }
+            }
+
+            result.Kops = kops
+                .Where(k => k.Members.Count >= KopMinMembersToList)
+                .OrderByDescending(k => k.Members.Count)
+                .ThenBy(k => k.Name)
+                .Select(k =>
+                {
+                    var item = new KopListItemResult
+                    {
+                        Id = k.Id,
+                        Name = k.Name,
+                        InviteCode = k.InviteCode,
+                        MemberCount = k.Members.Count
+                    };
+
+                    GroupMember? meilleur = null;
+                    double meilleureNote = double.MinValue;
+                    foreach (var m in k.Members)
+                    {
+                        if (!notes.ContainsKey(m.UserId)) { continue; }
+                        if (notes[m.UserId] > meilleureNote)
+                        {
+                            meilleureNote = notes[m.UserId];
+                            meilleur = m;
+                        }
+                    }
+
+                    if (meilleur != null)
+                    {
+                        item.BestScore = meilleureNote;
+                        item.BestScoreName = meilleur.User.DisplayName ?? "?";
+                    }
+
+                    return item;
+                })
+                .ToList();
+
+            return result;
+        }
+
         public async Task<List<GroupResult>> ByUserIdAsync(Guid userId)
         {
             var memberships = await dbContext.GroupMembers
@@ -867,7 +1047,8 @@ namespace dotnet.core.thegoldenfan.Services
                 InviteCode = m.Group.InviteCode,
                 CreatedDate = m.Group.CreatedDate,
                 MemberCount = m.Group.Members.Count,
-                CreatorId = m.Group.CreatorId
+                CreatorId = m.Group.CreatorId,
+                Type = m.Group.Type
             }).ToList();
         }
     }
