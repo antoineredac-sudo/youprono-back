@@ -31,7 +31,15 @@ using (var scope = app.Services.CreateScope())
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         db.Database.ExecuteSqlRaw(
             "ALTER TABLE \"Group\" ADD COLUMN IF NOT EXISTS \"Type\" character varying(20) NOT NULL DEFAULT 'amis';");
-        Console.WriteLine("[YouProno] Colonne Group.Type verifiee.");
+
+        // L'adresse e-mail. Nullable : les joueurs inscrits avant cette version
+        // n'en ont pas, on la leur demandera a leur prochaine connexion.
+        db.Database.ExecuteSqlRaw(
+            "ALTER TABLE \"User\" ADD COLUMN IF NOT EXISTS \"Email\" character varying(320);");
+        db.Database.ExecuteSqlRaw(
+            "ALTER TABLE \"User\" ADD COLUMN IF NOT EXISTS \"EmailOptIn\" boolean NOT NULL DEFAULT false;");
+
+        Console.WriteLine("[YouProno] Colonnes Group.Type, User.Email et User.EmailOptIn verifiees.");
     }
     catch (Exception ex)
     {
