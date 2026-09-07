@@ -116,6 +116,39 @@ namespace dotnet.core.thegoldenfan.controllers
             return res;
         }
 
+        // Ce que designe un code d'invitation, avant toute adhesion.
+        [HttpGet("ByCode/{inviteCode}")]
+        public async Task<ResponseModel<GroupByCodeResult>> ByCodeAsync(string inviteCode)
+        {
+            ResponseModel<GroupByCodeResult> res = ResponseModel<GroupByCodeResult>.CreateDefault();
+            try
+            {
+                var result = await service.ByCodeAsync(inviteCode, null);
+                res = new ResponseModel<GroupByCodeResult>(0, result);
+            }
+            catch (Exception ex)
+            {
+                res = ResponseModel<GroupByCodeResult>.Exception(ex);
+            }
+            return res;
+        }
+
+        [HttpGet("ByCode/{inviteCode}/{userId}")]
+        public async Task<ResponseModel<GroupByCodeResult>> ByCodeForUserAsync(string inviteCode, Guid userId)
+        {
+            ResponseModel<GroupByCodeResult> res = ResponseModel<GroupByCodeResult>.CreateDefault();
+            try
+            {
+                var result = await service.ByCodeAsync(inviteCode, userId);
+                res = new ResponseModel<GroupByCodeResult>(0, result);
+            }
+            catch (Exception ex)
+            {
+                res = ResponseModel<GroupByCodeResult>.Exception(ex);
+            }
+            return res;
+        }
+
         // La page d'un kop. Consultable sans compte : c'est ce que le fondateur
         // partage sur X, et ce qu'un visiteur voit avant de decider de jouer.
         [HttpGet("Kop/{teamId}/{groupId}")]
