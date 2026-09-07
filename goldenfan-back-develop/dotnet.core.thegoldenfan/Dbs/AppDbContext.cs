@@ -445,6 +445,8 @@ public partial class AppDbContext : DbContext
                 .HasColumnType("timestamp without time zone");
             entity.Property(e => e.DisplayName).HasMaxLength(250);
             entity.Property(e => e.NormalizedDisplayName).HasMaxLength(250);
+            entity.Property(e => e.Email).HasMaxLength(320);
+            entity.Property(e => e.EmailOptIn).HasDefaultValue(false);
         });
 
         modelBuilder.Entity<UserMatch>(entity =>

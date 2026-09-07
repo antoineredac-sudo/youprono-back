@@ -15,6 +15,13 @@ public partial class User
 
     public string? Password { get; set; }
 
+    // Sert d'abord a retrouver son compte : le jeu identifie les gens par pseudo,
+    // et un pseudo s'oublie. Servira aussi au rappel avant match, mais seulement
+    // pour ceux qui ont coche EmailOptIn.
+    public string? Email { get; set; }
+
+    public bool EmailOptIn { get; set; }
+
     public virtual ICollection<Follower> FollowerFollowerNavigations { get; } = new List<Follower>();
 
     public virtual ICollection<Follower> FollowerUsers { get; } = new List<Follower>();
