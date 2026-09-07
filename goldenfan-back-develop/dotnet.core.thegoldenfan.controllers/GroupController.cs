@@ -116,6 +116,23 @@ namespace dotnet.core.thegoldenfan.controllers
             return res;
         }
 
+        // La liste des kops de supporters, triee par nombre de membres.
+        [HttpGet("Kops/{userId}")]
+        public async Task<ResponseModel<KopListResult>> KopsAsync(Guid userId)
+        {
+            ResponseModel<KopListResult> res = ResponseModel<KopListResult>.CreateDefault();
+            try
+            {
+                var result = await service.KopListAsync(userId);
+                res = new ResponseModel<KopListResult>(0, result);
+            }
+            catch (Exception ex)
+            {
+                res = ResponseModel<KopListResult>.Exception(ex);
+            }
+            return res;
+        }
+
         [HttpGet("Trophies/{userId}")]
         public async Task<ResponseModel<TrophiesResult>> TrophiesAsync(Guid userId)
         {
