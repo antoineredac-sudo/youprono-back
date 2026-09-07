@@ -13,9 +13,15 @@ namespace dotnet.core.thegoldenfan.Services
     {
         private readonly AppDbContext dbContext;
 
-        public GroupService(AppDbContext dbContext)
+        // Le coefficient expert n'est calcule qu'a un seul endroit du jeu :
+        // UserService.ExpertCoefAllAsync. On l'appelle plutot que de le recalculer ici,
+        // sinon le kop afficherait des nombres que le classement general contredirait.
+        private readonly UserService userService;
+
+        public GroupService(AppDbContext dbContext, UserService userService)
         {
             this.dbContext = dbContext;
+            this.userService = userService;
         }
 
         private const int MinMembers = 2;
@@ -922,6 +928,282 @@ namespace dotnet.core.thegoldenfan.Services
                     TeamCrosses = teamSide.Crosses,
                     OpponentCrosses = opponentSide.Crosses
                 };
+            }
+
+            return result;
+        }
+
+        // --- La page d'un kop de supporters ---
+        // Trois blocs : le prono collectif du kop face au reel, les meilleurs du dernier
+        // match, et le classement des membres au coefficient expert avec leur rang
+        // general. Consultable sans compte : userId est facultatif.
+        // Cette route n'ecrit rien.
+
+        public class KopPlayerResult
+        {
+            public string Id { get; set; } = null!;
+            public string? FirstName { get; set; }
+            public string? LastName { get; set; }
+            public int ChoiceCount { get; set; }
+            public bool Found { get; set; }
+        }
+
+        public class KopPronoResult
+        {
+            // Le nombre de membres ayant reellement pronostique ce match.
+            public int PredictionCount { get; set; }
+
+            // Le onze le plus choisi par le kop, du plus consensuel au moins consensuel.
+            public List<KopPlayerResult> TopEleven { get; set; } = new();
+
+            public double TeamPossession { get; set; }
+            public double OpponentPossession { get; set; }
+            public double TeamShots { get; set; }
+            public double OpponentShots { get; set; }
+            public double TeamFouls { get; set; }
+            public double OpponentFouls { get; set; }
+            public double TeamCrosses { get; set; }
+            public double OpponentCrosses { get; set; }
+
+            // Le score le plus souvent pronostique, et par combien de membres.
+            public int TopTeamScore { get; set; }
+            public int TopOpponentScore { get; set; }
+            public int TopScoreCount { get; set; }
+        }
+
+        public class KopMatchRowResult
+        {
+            public Guid UserId { get; set; }
+            public string DisplayName { get; set; } = null!;
+            public double Score { get; set; }
+            public int Rank { get; set; }
+            public bool IsMe { get; set; }
+        }
+
+        public class KopRankRowResult
+        {
+            public Guid UserId { get; set; }
+            public string DisplayName { get; set; } = null!;
+            public double ExpertCoef { get; set; }
+            public int Rank { get; set; }
+            public int GeneralRank { get; set; }
+            public int MatchesPlayed { get; set; }
+            public bool IsMe { get; set; }
+        }
+
+        public class KopResult
+        {
+            public Guid Id { get; set; }
+            public string Name { get; set; } = null!;
+            public string InviteCode { get; set; } = null!;
+            public int MemberCount { get; set; }
+            public bool IsMember { get; set; }
+
+            // L'affiche du match sur lequel porte le bloc 1, et son etat :
+            // "none" (aucun match cloture), "closed", "composition", "results".
+            public string? MatchId { get; set; }
+            public string? MatchLabel { get; set; }
+            public string MatchState { get; set; } = "none";
+
+            public KopPronoResult? Prono { get; set; }
+            public SalonRealResult? Real { get; set; }
+
+            public List<KopMatchRowResult> LastMatch { get; set; } = new();
+            public List<KopRankRowResult> Ranking { get; set; } = new();
+        }
+
+        public async Task<KopResult> KopAsync(string teamId, Guid groupId, Guid? userId)
+        {
+            string src = "GroupService.KopAsync";
+            if (StringHelper.IsNull(teamId)) { throw BaseException.InvalidModel(-1, src); }
+
+            var group = await dbContext.Groups
+                .Include(i => i.Members).ThenInclude(i => i.User)
+                .FirstOrDefaultAsync(w => w.Id.Equals(groupId));
+            if (group == null) { throw BaseException.NotFound(-2, src); }
+            if (!IsKop(group.Type)) { throw BaseException.InvalidModel(-3, src); }
+
+            var memberIds = group.Members.Select(m => m.UserId).ToList();
+
+            var result = new KopResult
+            {
+                Id = group.Id,
+                Name = group.Name,
+                InviteCode = group.InviteCode,
+                MemberCount = group.Members.Count,
+                IsMember = userId.HasValue && memberIds.Contains(userId.Value)
+            };
+
+            // --- Bloc 3 : le classement du kop au coefficient expert ---
+            var coefs = await userService.ExpertCoefAllAsync(teamId);
+
+            var comptes = await dbContext.UserMatches
+                .Where(w => w.TeamId.Equals(teamId) && w.ResultTotal.HasValue && memberIds.Contains(w.UserId))
+                .GroupBy(gb => gb.UserId)
+                .Select(g => new { UserId = g.Key, Nb = g.Count() })
+                .ToListAsync();
+
+            // Le rang general se lit sur le classement complet, pas sur celui du kop :
+            // etre 1er de son kop et 43e du jeu, c'est deux informations, pas une.
+            var classementGeneral = coefs
+                .OrderByDescending(o => o.Value)
+                .Select(s => s.Key)
+                .ToList();
+
+            result.Ranking = group.Members
+                .Select(m => new KopRankRowResult
+                {
+                    UserId = m.UserId,
+                    DisplayName = m.User.DisplayName ?? "?",
+                    ExpertCoef = coefs.ContainsKey(m.UserId) ? coefs[m.UserId] : 0,
+                    MatchesPlayed = comptes.Where(w => w.UserId.Equals(m.UserId)).Select(s => s.Nb).FirstOrDefault(),
+                    GeneralRank = classementGeneral.IndexOf(m.UserId) + 1,
+                    IsMe = userId.HasValue && m.UserId.Equals(userId.Value)
+                })
+                .OrderByDescending(o => o.ExpertCoef)
+                .ThenBy(o => o.DisplayName)
+                .ToList();
+
+            for (int i = 0; i < result.Ranking.Count; i++) { result.Ranking[i].Rank = i + 1; }
+
+            // --- Le match de reference : le dernier dont les pronostics sont fermes ---
+            DateTime now = DateTime.UtcNow;
+            var matchs = await dbContext.Matches
+                .OrderByDescending(o => o.DateTime)
+                .Take(40)
+                .ToListAsync();
+
+            var courant = matchs.FirstOrDefault(f => ParisToUtc(f.DateTime.AddHours(-24)) <= now);
+            if (courant == null) { return result; }
+
+            var match = await dbContext.Matches
+                .Include(i => i.HomeTeam).ThenInclude(i => i.Team)
+                .Include(i => i.HomeTeam).ThenInclude(i => i.PlayerForMatches).ThenInclude(i => i.Person)
+                .Include(i => i.AwayTeam).ThenInclude(i => i.Team)
+                .Include(i => i.AwayTeam).ThenInclude(i => i.PlayerForMatches).ThenInclude(i => i.Person)
+                .Include(i => i.Place)
+                .Include(i => i.MatchDate).ThenInclude(i => i.Calendar).ThenInclude(i => i.Competition)
+                .FirstOrDefaultAsync(w => w.Id.Equals(courant.Id));
+            if (match == null) { return result; }
+
+            var detail = BaseMatchResult.FromDb(match);
+            bool teamIsHome = detail.HomeTeam != null && detail.HomeTeam.Id != null &&
+                              detail.HomeTeam.Id.Equals(teamId, StringComparison.OrdinalIgnoreCase);
+            var teamSide = teamIsHome ? detail.HomeTeam : detail.AwayTeam;
+            var opponentSide = teamIsHome ? detail.AwayTeam : detail.HomeTeam;
+            if (teamSide == null || opponentSide == null) { return result; }
+
+            result.MatchId = match.Id;
+            result.MatchLabel = (detail.HomeTeam != null ? detail.HomeTeam.Name : "?")
+                              + " — " + (detail.AwayTeam != null ? detail.AwayTeam.Name : "?");
+
+            var officialPlayers = teamSide.Players
+                .Where(w => !(w.Position != null && w.Position.Trim().Equals("SUBSTITUTE", StringComparison.OrdinalIgnoreCase)))
+                .ToList();
+            bool hasComposition = officialPlayers.Count > 0;
+            var officialIds = officialPlayers.Where(w => w.Id != null).Select(s => s.Id).ToList();
+            bool scored = IsScored(match.Status);
+
+            result.MatchState = scored ? "results" : (hasComposition ? "composition" : "closed");
+
+            // --- Bloc 1 : le prono du kop ---
+            var predictions = await dbContext.UserMatches
+                .Where(w => w.MatchId.Equals(match.Id) &&
+                            w.TeamId.Equals(teamId) &&
+                            memberIds.Contains(w.UserId))
+                .Include(i => i.UserPlayerForMatches).ThenInclude(i => i.Person)
+                .ToListAsync();
+
+            if (predictions.Count > 0)
+            {
+                var prono = new KopPronoResult { PredictionCount = predictions.Count };
+
+                var choix = new Dictionary<string, int>();
+                var personnes = new Dictionary<string, UserPlayerForMatch>();
+                foreach (var prediction in predictions)
+                {
+                    foreach (var pick in prediction.UserPlayerForMatches)
+                    {
+                        if (pick.PersonId == null) { continue; }
+                        if (choix.ContainsKey(pick.PersonId)) { choix[pick.PersonId] += 1; }
+                        else { choix[pick.PersonId] = 1; personnes[pick.PersonId] = pick; }
+                    }
+                }
+
+                prono.TopEleven = choix
+                    .OrderByDescending(o => o.Value)
+                    .Take(11)
+                    .Select(e => new KopPlayerResult
+                    {
+                        Id = e.Key,
+                        FirstName = personnes[e.Key].Person != null ? personnes[e.Key].Person.FirstName : null,
+                        LastName = personnes[e.Key].Person != null ? personnes[e.Key].Person.LastName : null,
+                        ChoiceCount = e.Value,
+                        Found = officialIds.Contains(e.Key)
+                    })
+                    .ToList();
+
+                prono.TeamPossession = Math.Round(predictions.Average(a => a.PreTeamPossession), 1);
+                prono.OpponentPossession = Math.Round(predictions.Average(a => a.PreOpponentPossession), 1);
+                prono.TeamShots = Math.Round(predictions.Average(a => (double)a.PreTeamShots), 1);
+                prono.OpponentShots = Math.Round(predictions.Average(a => (double)a.PreOpponentShots), 1);
+                prono.TeamFouls = Math.Round(predictions.Average(a => (double)a.PreTeamFouls), 1);
+                prono.OpponentFouls = Math.Round(predictions.Average(a => (double)a.PreOpponentFouls), 1);
+                prono.TeamCrosses = Math.Round(predictions.Average(a => (double)a.PreTeamCrosses), 1);
+                prono.OpponentCrosses = Math.Round(predictions.Average(a => (double)a.PreOpponentCrosses), 1);
+
+                // Le score le plus souvent pronostique. A egalite, le plus favorable au PSG.
+                var scores = predictions
+                    .GroupBy(g => new { g.PreTeamScore, g.PreOpponentScore })
+                    .Select(g => new { g.Key.PreTeamScore, g.Key.PreOpponentScore, Nb = g.Count() })
+                    .OrderByDescending(o => o.Nb)
+                    .ThenByDescending(o => o.PreTeamScore - o.PreOpponentScore)
+                    .FirstOrDefault();
+
+                if (scores != null)
+                {
+                    prono.TopTeamScore = scores.PreTeamScore;
+                    prono.TopOpponentScore = scores.PreOpponentScore;
+                    prono.TopScoreCount = scores.Nb;
+                }
+
+                result.Prono = prono;
+            }
+
+            if (scored)
+            {
+                result.Real = new SalonRealResult
+                {
+                    TeamScore = teamSide.Score,
+                    OpponentScore = opponentSide.Score,
+                    TeamPossession = teamSide.Possession,
+                    OpponentPossession = opponentSide.Possession,
+                    TeamShots = teamSide.Shots,
+                    OpponentShots = opponentSide.Shots,
+                    TeamFouls = teamSide.Fouls,
+                    OpponentFouls = opponentSide.Fouls,
+                    TeamCrosses = teamSide.Crosses,
+                    OpponentCrosses = opponentSide.Crosses
+                };
+
+                // --- Bloc 2 : les meilleurs du dernier match ---
+                var notes = predictions
+                    .Where(w => w.ResultTotal.HasValue)
+                    .OrderByDescending(o => o.ResultTotal.Value)
+                    .ToList();
+
+                for (int i = 0; i < notes.Count; i++)
+                {
+                    var membre = group.Members.FirstOrDefault(f => f.UserId.Equals(notes[i].UserId));
+                    result.LastMatch.Add(new KopMatchRowResult
+                    {
+                        UserId = notes[i].UserId,
+                        DisplayName = membre != null ? (membre.User.DisplayName ?? "?") : "?",
+                        Score = Math.Round(notes[i].ResultTotal.Value, 3),
+                        Rank = i + 1,
+                        IsMe = userId.HasValue && notes[i].UserId.Equals(userId.Value)
+                    });
+                }
             }
 
             return result;
