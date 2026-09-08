@@ -963,6 +963,146 @@ namespace dotnet.core.thegoldenfan.Services
             return result;
         }
 
+        // --- Ce qui s'est passe pour un joueur sur un match ---
+        // Alimente les messages affiches avec sa note. La route ne renvoie que des
+        // faits ; c'est le site qui les met en phrases. Elle n'ecrit rien.
+
+        public class PodiumResult
+        {
+            public Guid GroupId { get; set; }
+            public string GroupName { get; set; } = null!;
+            public int MemberCount { get; set; }
+            public int Rank { get; set; }
+
+            // Rempli seulement pour un groupe de deux : le duel a son propre texte.
+            public string? OpponentName { get; set; }
+
+            // Nombre de places manquees pour entrer dans la derniere place honoree
+            // du groupe. 0 quand le joueur y est deja.
+            public int PlacesFromPodium { get; set; }
+
+            // Ecart de note avec le dernier joueur honore, quand il est proche.
+            public double PointsFromPodium { get; set; }
+        }
+
+        public class MatchEventsResult
+        {
+            public double Score { get; set; }
+            public bool HasScore { get; set; }
+
+            // Premiere note de sa vie : ne se produit qu'une fois.
+            public bool IsFirstScoredMatch { get; set; }
+
+            // Meilleure note de sa vie, ce match compris.
+            public bool IsPersonalRecord { get; set; }
+
+            // Classement general avant et apres ce match. 0 = non classe.
+            public int GeneralRankBefore { get; set; }
+            public int GeneralRankAfter { get; set; }
+
+            // Un par groupe d'amis, le mieux classe d'abord.
+            public List<PodiumResult> Podiums { get; set; } = new();
+        }
+
+        // Le rang a partir duquel on felicite, selon la taille du groupe.
+        // 1er partout des 3 membres, 2e a partir de 5, 3e a partir de 7.
+        private static int PodiumDepthFor(int memberCount)
+        {
+            if (memberCount < 3) { return 0; }
+            if (memberCount < 5) { return 1; }
+            if (memberCount < 7) { return 2; }
+            return 3;
+        }
+
+        public async Task<MatchEventsResult> MatchEventsAsync(string teamId, string matchId, Guid userId)
+        {
+            string src = "GroupService.MatchEventsAsync";
+            if (StringHelper.IsNull(teamId) || StringHelper.IsNull(matchId))
+            { throw BaseException.InvalidModel(-1, src); }
+
+            var result = new MatchEventsResult();
+
+            // --- Sa note sur ce match, et son histoire ---
+            var siennes = await dbContext.UserMatches
+                .Where(w => w.UserId.Equals(userId) && w.TeamId.Equals(teamId) && w.ResultTotal.HasValue)
+                .Select(s => new { s.MatchId, Note = s.ResultTotal.Value })
+                .ToListAsync();
+
+            var laSienne = siennes.FirstOrDefault(f => f.MatchId.Equals(matchId));
+            if (laSienne == null) { return result; }
+
+            result.HasScore = true;
+            result.Score = Math.Round(laSienne.Note, 3);
+            result.IsFirstScoredMatch = siennes.Count == 1;
+            result.IsPersonalRecord = siennes.Count > 1
+                && siennes.All(a => a.MatchId.Equals(matchId) || a.Note < laSienne.Note);
+
+            // --- Le classement general, avant et apres ---
+            var apres = await userService.ExpertCoefAllAsync(teamId);
+            var avant = await userService.ExpertCoefAllAsync(teamId, matchId);
+
+            result.GeneralRankAfter = RangDans(apres, userId);
+            result.GeneralRankBefore = RangDans(avant, userId);
+
+            // --- Sa place dans chacun de ses groupes d'amis sur ce match ---
+            var groupes = await dbContext.Groups
+                .Include(i => i.Members).ThenInclude(i => i.User)
+                .Where(w => w.Members.Any(a => a.UserId.Equals(userId)) && w.Type != TypeKop)
+                .ToListAsync();
+
+            foreach (var g in groupes)
+            {
+                var membreIds = g.Members.Select(m => m.UserId).ToList();
+
+                var notes = await dbContext.UserMatches
+                    .Where(w => w.MatchId.Equals(matchId) && w.TeamId.Equals(teamId)
+                             && membreIds.Contains(w.UserId) && w.ResultTotal.HasValue)
+                    .Select(s => new { s.UserId, Note = s.ResultTotal.Value })
+                    .ToListAsync();
+
+                var classees = notes.OrderByDescending(o => o.Note).ToList();
+                int rang = classees.FindIndex(f => f.UserId.Equals(userId)) + 1;
+                if (rang == 0) { continue; }
+
+                int profondeur = PodiumDepthFor(g.Members.Count);
+                var podium = new PodiumResult
+                {
+                    GroupId = g.Id,
+                    GroupName = g.Name,
+                    MemberCount = g.Members.Count,
+                    Rank = rang,
+                    OpponentName = g.Members.Count == 2
+                        ? g.Members.Where(w => !w.UserId.Equals(userId))
+                                   .Select(sm => sm.User.DisplayName).FirstOrDefault()
+                        : null
+                };
+
+                if (profondeur > 0 && rang > profondeur)
+                {
+                    podium.PlacesFromPodium = rang - profondeur;
+                    if (classees.Count >= profondeur)
+                    {
+                        podium.PointsFromPodium =
+                            Math.Round(classees[profondeur - 1].Note - laSienne.Note, 3);
+                    }
+                }
+
+                result.Podiums.Add(podium);
+            }
+
+            result.Podiums = result.Podiums.OrderBy(o => o.Rank).ToList();
+            return result;
+        }
+
+        private static int RangDans(Dictionary<Guid, double> coefs, Guid userId)
+        {
+            if (!coefs.ContainsKey(userId)) { return 0; }
+            return coefs.OrderByDescending(o => o.Value)
+                        .Select(s => s.Key)
+                        .ToList()
+                        .IndexOf(userId) + 1;
+        }
+
         // --- La page d'un kop de supporters ---
         // Trois blocs : le prono collectif du kop face au reel, les meilleurs du dernier
         // match, et le classement des membres au coefficient expert avec leur rang

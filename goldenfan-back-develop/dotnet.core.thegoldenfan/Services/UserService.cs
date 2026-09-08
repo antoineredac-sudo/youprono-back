@@ -101,11 +101,15 @@ namespace dotnet.core.thegoldenfan.Services
 
         // Même calcul pour tout le monde d'un coup, pour les classements.
         // Une seule requête suffit désormais : sans bonus, plus rien n'est individuel.
-        public async Task<Dictionary<Guid, double>> ExpertCoefAllAsync(string teamId)
+        // excludeMatchId permet de reconstituer le classement TEL QU'IL ETAIT avant
+        // un match donne, pour dire au joueur combien de places il vient de gagner.
+        // Le calcul reste ecrit ici et nulle part ailleurs.
+        public async Task<Dictionary<Guid, double>> ExpertCoefAllAsync(string teamId, string? excludeMatchId = null)
         {
             var moyennes = await dbContext
                 .UserMatches
-                .Where(w => w.TeamId.Equals(teamId) && w.ResultTotal.HasValue)
+                .Where(w => w.TeamId.Equals(teamId) && w.ResultTotal.HasValue
+                         && (excludeMatchId == null || !w.MatchId.Equals(excludeMatchId)))
                 .GroupBy(gb => gb.UserId)
                 .Select(g => new { UserId = g.Key, Moyenne = g.Average(a => a.ResultTotal.Value) })
                 .ToListAsync();
