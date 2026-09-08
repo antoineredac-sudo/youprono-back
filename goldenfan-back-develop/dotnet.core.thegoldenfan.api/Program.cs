@@ -39,7 +39,20 @@ using (var scope = app.Services.CreateScope())
         db.Database.ExecuteSqlRaw(
             "ALTER TABLE \"User\" ADD COLUMN IF NOT EXISTS \"EmailOptIn\" boolean NOT NULL DEFAULT false;");
 
-        Console.WriteLine("[YouProno] Colonnes Group.Type, User.Email et User.EmailOptIn verifiees.");
+        // Correction ponctuelle : quelques joueurs n'ont qu'un nom d'usage et ont
+        // ete enregistres avec le meme prenom et le meme nom — « Marquinhos
+        // Marquinhos », « Vitinha Vitinha ». On vide le prenom.
+        // La condition FirstName = LastName ne peut viser personne d'autre, et
+        // l'instruction ne trouve plus rien une fois la correction faite : elle
+        // peut donc tourner a chaque demarrage sans risque.
+        // L'identifiant de la personne n'est pas touche : les pronostics deja
+        // enregistres continuent de pointer sur la bonne fiche.
+        int corriges = db.Database.ExecuteSqlRaw(
+            "UPDATE \"Person\" SET \"FirstName\" = '', \"NormalizedFirstName\" = '', " +
+            "\"MatchName\" = \"LastName\", \"NormalizedMatchName\" = \"NormalizedLastName\" " +
+            "WHERE \"FirstName\" IS NOT NULL AND \"FirstName\" <> '' AND \"FirstName\" = \"LastName\";");
+
+        Console.WriteLine("[YouProno] Colonnes verifiees. Fiches joueur corrigees : " + corriges + ".");
     }
     catch (Exception ex)
     {
