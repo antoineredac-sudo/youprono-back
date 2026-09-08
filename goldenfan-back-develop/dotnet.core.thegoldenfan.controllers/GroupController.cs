@@ -116,6 +116,24 @@ namespace dotnet.core.thegoldenfan.controllers
             return res;
         }
 
+        // Ce qui s'est passe pour un joueur sur un match : podiums de groupe,
+        // record personnel, progression au classement. Lu avec la note.
+        [HttpGet("MatchEvents/{teamId}/{matchId}/{userId}")]
+        public async Task<ResponseModel<MatchEventsResult>> MatchEventsAsync(string teamId, string matchId, Guid userId)
+        {
+            ResponseModel<MatchEventsResult> res = ResponseModel<MatchEventsResult>.CreateDefault();
+            try
+            {
+                var result = await service.MatchEventsAsync(teamId, matchId, userId);
+                res = new ResponseModel<MatchEventsResult>(0, result);
+            }
+            catch (Exception ex)
+            {
+                res = ResponseModel<MatchEventsResult>.Exception(ex);
+            }
+            return res;
+        }
+
         // Ce que designe un code d'invitation, avant toute adhesion.
         [HttpGet("ByCode/{inviteCode}")]
         public async Task<ResponseModel<GroupByCodeResult>> ByCodeAsync(string inviteCode)
