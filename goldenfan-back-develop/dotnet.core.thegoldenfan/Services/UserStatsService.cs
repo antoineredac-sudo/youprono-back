@@ -237,11 +237,52 @@ namespace dotnet.core.thegoldenfan.Services
             res.Add(cumulation);
             return res;
         }
-        private List<CalculResult> CalculateComposition(TeamResult selectedTeam, TeamResult opponentTeam, UserPredictionModel userPrediction)
+        // --- La prime de rarete ---
+        // Un titulaire trouve rapporte d'autant plus que peu de joueurs l'avaient
+        // choisi. La part se calcule sur TOUS les participants au match, pas sur
+        // le groupe. Pente continue plutot que paliers : entre 29,9 % et 30,0 %
+        // la rarete est la meme, la note doit l'etre aussi.
+        //   0 %  -> x1,25
+        //  20 %  -> x1,15
+        //  50 % et au-dela -> x1,00, aucun bonus
+        // Ecrite ici et lue aussi par GroupService, pour que la note affichee une
+        // heure avant le match soit exactement celle du moteur.
+        public const double BASE_TITULAIRE = 100.0 / 11.0;
+
+        public static double CoefRarete(int choisiPar, int participants)
+        {
+            if (participants <= 0) { return 1; }
+            double part = (double)choisiPar / (double)participants;
+            double coef = 1.25 - (part / 2.0);
+            return coef < 1 ? 1 : coef;
+        }
+
+        // Combien de fois chaque joueur a ete choisi sur ce match, et par combien
+        // de personnes au total. Une seule requete par notation.
+        private async Task<(Dictionary<string, int> choix, int participants)> RareteAsync(string matchId, string teamId)
+        {
+            var predictions = await dbContext.UserMatches
+                .Where(w => w.MatchId.Equals(matchId) && w.TeamId.Equals(teamId))
+                .Include(i => i.UserPlayerForMatches)
+                .ToListAsync();
+
+            var compte = new Dictionary<string, int>();
+            foreach (var prediction in predictions)
+            {
+                foreach (var pick in prediction.UserPlayerForMatches)
+                {
+                    if (pick.PersonId == null) { continue; }
+                    compte[pick.PersonId] = compte.ContainsKey(pick.PersonId) ? compte[pick.PersonId] + 1 : 1;
+                }
+            }
+            return (compte, predictions.Count);
+        }
+
+        private List<CalculResult> CalculateComposition(TeamResult selectedTeam, TeamResult opponentTeam, UserPredictionModel userPrediction, Dictionary<string, int> choix, int participants)
         {
             List<CalculResult> res = new();
             var coef = _COEF_["COMPOSITION"];
-            int nbSelected = 0;
+            double somme = 0;
             var selectedPlayers = selectedTeam.Players;
             var predictedPlayers = userPrediction.Players;
 
@@ -249,10 +290,16 @@ namespace dotnet.core.thegoldenfan.Services
             foreach(var player in selectedPlayers)
             {
                 var tmp = predictedPlayers.FirstOrDefault(w => w.Equals(player.Id));
-                if(tmp != null) { nbSelected++; }
+                if(tmp == null) { continue; }
+
+                int nb = (player.Id != null && choix.ContainsKey(player.Id)) ? choix[player.Id] : 0;
+                somme += BASE_TITULAIRE * CoefRarete(nb, participants);
             }
+
             var team = new CalculResult();
-            team.Value = Math.Round(((double)nbSelected / (double)11) * 100, 4);
+            // Onze titulaires sans aucun bonus font toujours 100. Avec des choix
+            // rares, la note peut depasser 100, et c'est assume.
+            team.Value = Math.Round(somme, 4);
             team.Formula = Math.Round(team.Value, 4);
             team.Total = Math.Round(team.Formula * coef[2], 4);
             res.Add(team);
@@ -284,7 +331,8 @@ namespace dotnet.core.thegoldenfan.Services
             var fouls = CalculateFouls(selectedTeam, opponentTeam, model);
             var crosses = CalculateCrosses(selectedTeam, opponentTeam, model);
             var score = CalculateScore(selectedTeam, opponentTeam, model);
-            var composition = CalculateComposition(selectedTeam, opponentTeam, model);
+            var rareteMatch = await RareteAsync(matchId, teamId);
+            var composition = CalculateComposition(selectedTeam, opponentTeam, model, rareteMatch.choix, rareteMatch.participants);
             UserStatsResult res = new()
             {
                 UserId = userId,
@@ -435,7 +483,8 @@ namespace dotnet.core.thegoldenfan.Services
                 var fouls = CalculateFouls(selectedTeam, opponentTeam, model);
                 var crosses = CalculateCrosses(selectedTeam, opponentTeam, model);
                 var score = CalculateScore(selectedTeam, opponentTeam, model);
-                var composition = CalculateComposition(selectedTeam, opponentTeam, model);
+                var rarete = await RareteAsync(matchId, teamId);
+                var composition = CalculateComposition(selectedTeam, opponentTeam, model, rarete.choix, rarete.participants);
                 UserStatsResult res = new()
                 {
                     UserId = userId,

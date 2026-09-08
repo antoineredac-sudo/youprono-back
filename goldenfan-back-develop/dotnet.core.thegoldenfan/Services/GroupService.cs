@@ -859,8 +859,19 @@ namespace dotnet.core.thegoldenfan.Services
                     {
                         int found = row.Picks.Count(c => c.Found);
                         row.CompositionFound = found;
-                        // Exactement la formule du moteur : titulaires trouvés sur onze, ramenés sur cent.
-                        row.CompositionNote = Math.Round((found / 11.0) * 100, 4);
+
+                        // Exactement la formule du moteur, prime de rareté comprise :
+                        // la note affichée une heure avant le match est celle qui
+                        // sera comptée. CoefRarete est écrit dans UserStatsService
+                        // et lu ici, pour qu'il n'existe qu'une seule définition.
+                        double note = 0;
+                        foreach (var pick in row.Picks)
+                        {
+                            if (!pick.Found) { continue; }
+                            note += UserStatsService.BASE_TITULAIRE
+                                  * UserStatsService.CoefRarete(pick.ChoiceCount, participantCount);
+                        }
+                        row.CompositionNote = Math.Round(note, 4);
                     }
 
                     if (scored && prediction.ResultTotal.HasValue)
