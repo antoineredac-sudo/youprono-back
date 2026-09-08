@@ -134,6 +134,23 @@ namespace dotnet.core.thegoldenfan.controllers
             return res;
         }
 
+        // Bascule un kop en kop de partenaire. type = "kop" ou "kopmedia".
+        [HttpPost("Type/{groupId}/{type}")]
+        public async Task<ResponseModel<GroupResult>> SetTypeAsync(Guid groupId, string type)
+        {
+            ResponseModel<GroupResult> res = ResponseModel<GroupResult>.CreateDefault();
+            try
+            {
+                var result = await service.SetTypeAsync(groupId, type);
+                res = new ResponseModel<GroupResult>(0, result);
+            }
+            catch (Exception ex)
+            {
+                res = ResponseModel<GroupResult>.Exception(ex);
+            }
+            return res;
+        }
+
         // Ce que designe un code d'invitation, avant toute adhesion.
         [HttpGet("ByCode/{inviteCode}")]
         public async Task<ResponseModel<GroupByCodeResult>> ByCodeAsync(string inviteCode)
