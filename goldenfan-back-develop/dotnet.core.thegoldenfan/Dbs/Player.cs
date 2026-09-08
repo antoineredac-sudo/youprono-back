@@ -19,6 +19,11 @@ public partial class Player
 
     public string? Position { get; set; }
 
+    // Le rang de gauche a droite dans sa ligne, vu depuis les tribunes.
+    // 1 = le plus a gauche. 0 = non renseigne.
+    // Sert uniquement au dessin du terrain, jamais a la notation.
+    public int PositionOrder { get; set; }
+
     public virtual Person? Person { get; set; }
 
     public virtual Team? Team { get; set; }

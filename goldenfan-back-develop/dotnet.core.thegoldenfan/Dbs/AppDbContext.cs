@@ -319,6 +319,8 @@ public partial class AppDbContext : DbContext
 
             entity.ToTable("Player");
 
+            entity.Property(e => e.PositionOrder).HasDefaultValue(0);
+
             entity.Property(e => e.Id).ValueGeneratedNever();
             entity.Property(e => e.PersonId).HasMaxLength(50);
             entity.Property(e => e.Position).HasMaxLength(50);
