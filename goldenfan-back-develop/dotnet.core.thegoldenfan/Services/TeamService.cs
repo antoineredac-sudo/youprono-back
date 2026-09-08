@@ -57,7 +57,8 @@ namespace dotnet.core.thegoldenfan.Services
                         Id = Guid.NewGuid().ToString(),
                         FirstName = p.FirstName,
                         LastName = p.LastName,
-                        MatchName = $"{p.FirstName} {p.LastName}",
+                        // Trim : un joueur sans prenom ne doit pas s'appeler « <espace>Nom ».
+                        MatchName = $"{p.FirstName} {p.LastName}".Trim(),
                         Active = true
                     };
                     dbContext.People.Add(person);
