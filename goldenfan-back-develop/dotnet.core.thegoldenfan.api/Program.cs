@@ -52,16 +52,47 @@ using (var scope = app.Services.CreateScope())
             "\"MatchName\" = \"LastName\", \"NormalizedMatchName\" = \"NormalizedLastName\" " +
             "WHERE \"FirstName\" IS NOT NULL AND \"FirstName\" <> '' AND \"FirstName\" = \"LastName\";");
 
-        // Desire Doue etait enregistre comme milieu : c'est un attaquant.
-        // Le poste sert au dessin du terrain, pas a la notation.
-        int postes = db.Database.ExecuteSqlRaw(
-            "UPDATE \"Player\" SET \"Position\" = 'Attaquant' " +
-            "FROM \"Person\" p " +
-            "WHERE \"Player\".\"PersonId\" = p.\"Id\" " +
-            "AND p.\"LastName\" = 'Doué' AND \"Player\".\"Position\" <> 'Attaquant';");
+        // Le rang lateral, de gauche a droite dans la ligne, vu des tribunes.
+        db.Database.ExecuteSqlRaw(
+            "ALTER TABLE \"Player\" ADD COLUMN IF NOT EXISTS \"PositionOrder\" integer NOT NULL DEFAULT 0;");
 
-        Console.WriteLine("[YouProno] Colonnes verifiees. Fiches corrigees : " + corriges
-            + ". Postes corriges : " + postes + ".");
+        // --- Postes et placement lateral de l'effectif, donnes par Antoine ---
+        // Le rang est l'ordre de gauche a droite DANS SA LIGNE, vu des tribunes.
+        // Defense : 1 gauche, 2 axe gauche, 3 axe droit, 4 droite.
+        // Milieu et attaque : 1 gauche, 2 centre, 3 droite.
+        // Le poste et le rang ne servent qu'au dessin du terrain, jamais a la
+        // notation : le moteur compte onze noms trouves, sans regarder ou.
+        // Chaque instruction ne fait rien si la fiche est deja a jour, donc
+        // l'ensemble peut tourner a chaque demarrage.
+        var effectif = new (string nom, string poste, int rang)[]
+        {
+            ("Mendes", "Défenseur", 1), ("Digne", "Défenseur", 1),
+            ("Pacho", "Défenseur", 2), ("Hernández", "Défenseur", 2),
+            ("Marquinhos", "Défenseur", 3), ("Zabarnyi", "Défenseur", 3),
+            ("Hakimi", "Défenseur", 4), ("Boly", "Défenseur", 4),
+
+            ("Ruiz", "Milieu", 1), ("Fernández", "Milieu", 1), ("Mayulu", "Milieu", 1),
+            ("Vitinha", "Milieu", 2), ("Beraldo", "Milieu", 2),
+            ("Neves", "Milieu", 3), ("Zaïre-Emery", "Milieu", 3),
+
+            ("Kvaratskhelia", "Attaquant", 1), ("Godts", "Attaquant", 1),
+            ("Dembélé", "Attaquant", 2), ("Torres", "Attaquant", 2),
+            ("Doué", "Attaquant", 3), ("Akliouche", "Attaquant", 3)
+        };
+
+        int fiches = 0;
+        foreach (var j in effectif)
+        {
+            fiches += db.Database.ExecuteSqlRaw(
+                "UPDATE \"Player\" SET \"Position\" = {1}, \"PositionOrder\" = {2} " +
+                "FROM \"Person\" p " +
+                "WHERE \"Player\".\"PersonId\" = p.\"Id\" AND p.\"LastName\" = {0} " +
+                "AND (\"Player\".\"Position\" IS DISTINCT FROM {1} OR \"Player\".\"PositionOrder\" <> {2});",
+                j.nom, j.poste, j.rang);
+        }
+
+        Console.WriteLine("[YouProno] Colonnes verifiees. Prenoms corriges : " + corriges
+            + ". Fiches joueur mises a jour : " + fiches + ".");
     }
     catch (Exception ex)
     {
