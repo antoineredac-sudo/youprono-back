@@ -52,7 +52,16 @@ using (var scope = app.Services.CreateScope())
             "\"MatchName\" = \"LastName\", \"NormalizedMatchName\" = \"NormalizedLastName\" " +
             "WHERE \"FirstName\" IS NOT NULL AND \"FirstName\" <> '' AND \"FirstName\" = \"LastName\";");
 
-        Console.WriteLine("[YouProno] Colonnes verifiees. Fiches joueur corrigees : " + corriges + ".");
+        // Desire Doue etait enregistre comme milieu : c'est un attaquant.
+        // Le poste sert au dessin du terrain, pas a la notation.
+        int postes = db.Database.ExecuteSqlRaw(
+            "UPDATE \"Player\" SET \"Position\" = 'Attaquant' " +
+            "FROM \"Person\" p " +
+            "WHERE \"Player\".\"PersonId\" = p.\"Id\" " +
+            "AND p.\"LastName\" = 'Doué' AND \"Player\".\"Position\" <> 'Attaquant';");
+
+        Console.WriteLine("[YouProno] Colonnes verifiees. Fiches corrigees : " + corriges
+            + ". Postes corriges : " + postes + ".");
     }
     catch (Exception ex)
     {
