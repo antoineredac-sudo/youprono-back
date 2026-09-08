@@ -561,6 +561,10 @@ namespace dotnet.core.thegoldenfan.Services
             public int MetalLevel { get; set; }
             public string? MetalName { get; set; }
             public int MetalValue { get; set; }
+
+            // Dans un groupe de deux, le pseudo de l'autre : le message de fin de
+            // cycle le nomme, qu'on ait gagne ou perdu.
+            public string? OpponentName { get; set; }
         }
 
         public class TrophiesResult
@@ -571,6 +575,10 @@ namespace dotnet.core.thegoldenfan.Services
             public int CupsCompleted { get; set; }
             public int CupProgress { get; set; }
             public int CupTarget { get; set; }
+
+            // Le premier palier, pour dire a celui qui n'a rien eu combien il
+            // lui manquait. Ecrit ici plutot que recopie dans le site.
+            public int BronzeThreshold { get; set; }
         }
 
         private static int MetalLevelFor(int points)
@@ -584,11 +592,15 @@ namespace dotnet.core.thegoldenfan.Services
 
         public async Task<TrophiesResult> TrophiesAsync(Guid userId)
         {
-            var result = new TrophiesResult { CupTarget = CupTarget };
+            var result = new TrophiesResult
+            {
+                CupTarget = CupTarget,
+                BronzeThreshold = MedalThresholds[0]
+            };
 
             // Les kops sont ecartes : on n'y gagne ni point ni medaille.
             var groups = await dbContext.Groups
-                .Include(i => i.Members)
+                .Include(i => i.Members).ThenInclude(i => i.User)
                 .Where(w => w.Members.Any(a => a.UserId.Equals(userId)) && w.Type != TypeKop)
                 .ToListAsync();
 
@@ -680,7 +692,11 @@ namespace dotnet.core.thegoldenfan.Services
                             IsChampion = position == 1 && entry.Value > 0,
                             MetalLevel = level,
                             MetalName = level > 0 ? MedalNames[level - 1] : null,
-                            MetalValue = level > 0 ? MedalValues[level - 1] : 0
+                            MetalValue = level > 0 ? MedalValues[level - 1] : 0,
+                            OpponentName = group.Members.Count == 2
+                                ? group.Members.Where(w => !w.UserId.Equals(userId))
+                                        .Select(sm => sm.User.DisplayName).FirstOrDefault()
+                                : null
                         };
                         result.Medals.Add(medal);
                         if (level > 0) { result.MedalCounts[level - 1]++; }
