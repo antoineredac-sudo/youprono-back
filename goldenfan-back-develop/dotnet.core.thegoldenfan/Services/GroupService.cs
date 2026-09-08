@@ -1219,6 +1219,11 @@ namespace dotnet.core.thegoldenfan.Services
             public int MemberCount { get; set; }
             public bool IsMember { get; set; }
 
+            // "kop" ou "kopmedia" : le site s'en sert pour choisir le texte de
+            // partage. Oublie a la premiere ecriture, d'ou un partage qui
+            // proposait toujours le message des amis.
+            public string Type { get; set; } = TypeKop;
+
             // L'affiche du match sur lequel porte le bloc 1, et son etat :
             // "none" (aucun match cloture), "closed", "composition", "results".
             public string? MatchId { get; set; }
@@ -1257,7 +1262,8 @@ namespace dotnet.core.thegoldenfan.Services
                 Name = group.Name,
                 InviteCode = group.InviteCode,
                 MemberCount = group.Members.Count,
-                IsMember = userId.HasValue && memberIds.Contains(userId.Value)
+                IsMember = userId.HasValue && memberIds.Contains(userId.Value),
+                Type = group.Type
             };
 
             // --- Bloc 3 : le classement du kop au coefficient expert ---
