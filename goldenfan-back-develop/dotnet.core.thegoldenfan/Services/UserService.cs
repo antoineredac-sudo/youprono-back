@@ -129,6 +129,11 @@ namespace dotnet.core.thegoldenfan.Services
             public Guid Id { get; set; }
             public string? DisplayName { get; set; } = null;
             public DateTime? DateCreated { get; set; }
+
+            // Sous code d'acces uniquement : cette liste alimente le tableau de
+            // bord local d'Antoine, pas le site des joueurs.
+            public string? Email { get; set; }
+            public bool EmailOptIn { get; set; }
         }
 
         public sealed class AllUsersResult
@@ -150,7 +155,9 @@ namespace dotnet.core.thegoldenfan.Services
                 {
                     Id = s.Id,
                     DisplayName = s.DisplayName,
-                    DateCreated = s.DateCreated
+                    DateCreated = s.DateCreated,
+                    Email = s.Email,
+                    EmailOptIn = s.EmailOptIn
                 })
                 .ToListAsync();
 
@@ -212,10 +219,12 @@ namespace dotnet.core.thegoldenfan.Services
             var user = await dbContext.Users.FirstOrDefaultAsync(w => w.Id.Equals(userId));
             if (user == null) { throw BaseException.NotFound(-1, src); }
 
+            // On ne renvoie pas l'adresse elle-meme : cette route n'est protegee
+            // par rien, et le site n'a besoin que de savoir si elle existe.
+            // La liste des adresses passe par AllAsync, sous code d'acces.
             return new EmailStatusResult
             {
                 HasEmail = !StringHelper.IsNull(user.Email),
-                Email = user.Email,
                 EmailOptIn = user.EmailOptIn
             };
         }
