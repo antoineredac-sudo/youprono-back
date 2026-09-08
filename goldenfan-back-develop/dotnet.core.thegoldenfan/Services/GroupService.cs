@@ -58,6 +58,12 @@ namespace dotnet.core.thegoldenfan.Services
         public const string TypeAmis = "amis";
         public const string TypeKop = "kop";
 
+        // Un kop de partenaire : meme mecanique qu'un kop ordinaire, mais le
+        // message de partage sur X parle au nom d'un media a ses abonnes, pas
+        // d'un joueur a ses amis. Aucune colonne en plus : c'est une troisieme
+        // valeur de Type.
+        public const string TypeKopMedia = "kopmedia";
+
         // Au-dela, le nom ne tient plus dans le message de partage sur X.
         private const int KopNameMaxLength = 30;
 
@@ -67,13 +73,46 @@ namespace dotnet.core.thegoldenfan.Services
 
         private static string NormalizeType(string? type)
         {
-            return string.Equals((type ?? "").Trim(), TypeKop, StringComparison.OrdinalIgnoreCase)
-                ? TypeKop : TypeAmis;
+            string t = (type ?? "").Trim();
+            if (string.Equals(t, TypeKopMedia, StringComparison.OrdinalIgnoreCase)) { return TypeKopMedia; }
+            if (string.Equals(t, TypeKop, StringComparison.OrdinalIgnoreCase)) { return TypeKop; }
+            return TypeAmis;
         }
 
+        // Les deux sortes de kop se comportent pareil : pas de plafond, pas de
+        // medaille, un seul par joueur. Seul le texte de partage differe.
         private static bool IsKop(string? type)
         {
-            return string.Equals((type ?? "").Trim(), TypeKop, StringComparison.OrdinalIgnoreCase);
+            string t = (type ?? "").Trim();
+            return string.Equals(t, TypeKop, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(t, TypeKopMedia, StringComparison.OrdinalIgnoreCase);
+        }
+
+        // Bascule un kop en kop de partenaire, et l'inverse. Appelee depuis
+        // Swagger par Antoine, une fois par partenaire.
+        public async Task<GroupResult> SetTypeAsync(Guid groupId, string type)
+        {
+            string src = "GroupService.SetTypeAsync";
+            string voulu = NormalizeType(type);
+
+            var group = await dbContext.Groups
+                .Include(i => i.Members)
+                .FirstOrDefaultAsync(w => w.Id.Equals(groupId));
+            if (group == null) { throw BaseException.NotFound(-1, src); }
+
+            group.Type = voulu;
+            await dbContext.SaveChangesAsync();
+
+            return new GroupResult
+            {
+                Id = group.Id,
+                Name = group.Name,
+                InviteCode = group.InviteCode,
+                CreatedDate = group.CreatedDate,
+                MemberCount = group.Members.Count,
+                CreatorId = group.CreatorId,
+                Type = group.Type
+            };
         }
 
         // Un joueur n'appartient qu'a un seul kop a la fois. Pour en changer, il doit
@@ -81,7 +120,7 @@ namespace dotnet.core.thegoldenfan.Services
         private async Task EnsureNoOtherKopAsync(Guid userId, string src)
         {
             bool dejaDansUnKop = await dbContext.GroupMembers
-                .AnyAsync(w => w.UserId.Equals(userId) && w.Group.Type == TypeKop);
+                .AnyAsync(w => w.UserId.Equals(userId) && (w.Group.Type == TypeKop || w.Group.Type == TypeKopMedia));
             if (dejaDansUnKop) { throw BaseException.AlreadyInDb(-9, src); }
         }
 
@@ -601,7 +640,7 @@ namespace dotnet.core.thegoldenfan.Services
             // Les kops sont ecartes : on n'y gagne ni point ni medaille.
             var groups = await dbContext.Groups
                 .Include(i => i.Members).ThenInclude(i => i.User)
-                .Where(w => w.Members.Any(a => a.UserId.Equals(userId)) && w.Type != TypeKop)
+                .Where(w => w.Members.Any(a => a.UserId.Equals(userId)) && w.Type != TypeKop && w.Type != TypeKopMedia)
                 .ToListAsync();
 
             DateTime now = DateTime.UtcNow;
@@ -1058,7 +1097,7 @@ namespace dotnet.core.thegoldenfan.Services
             // --- Sa place dans chacun de ses groupes d'amis sur ce match ---
             var groupes = await dbContext.Groups
                 .Include(i => i.Members).ThenInclude(i => i.User)
-                .Where(w => w.Members.Any(a => a.UserId.Equals(userId)) && w.Type != TypeKop)
+                .Where(w => w.Members.Any(a => a.UserId.Equals(userId)) && w.Type != TypeKop && w.Type != TypeKopMedia)
                 .ToListAsync();
 
             foreach (var g in groupes)
@@ -1480,7 +1519,7 @@ namespace dotnet.core.thegoldenfan.Services
 
             var kops = await dbContext.Groups
                 .Include(i => i.Members).ThenInclude(i => i.User)
-                .Where(w => w.Type == TypeKop)
+                .Where(w => w.Type == TypeKop || w.Type == TypeKopMedia)
                 .ToListAsync();
 
             var mien = kops.FirstOrDefault(k => k.Members.Any(m => m.UserId.Equals(userId)));
