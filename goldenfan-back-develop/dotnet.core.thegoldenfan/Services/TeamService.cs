@@ -27,6 +27,7 @@ namespace dotnet.core.thegoldenfan.Services
             public string LastName { get; set; } = null!;
             public int ShirtNumber { get; set; }
             public string? Position { get; set; }
+            public int PositionOrder { get; set; }
         }
 
         public class SetSquadInput
@@ -71,6 +72,7 @@ namespace dotnet.core.thegoldenfan.Services
                     PersonId = person.Id,
                     ShirtNumber = p.ShirtNumber,
                     Position = p.Position,
+                    PositionOrder = p.PositionOrder,
                     Active = true
                 };
                 dbContext.Players.Add(player);
@@ -141,6 +143,7 @@ namespace dotnet.core.thegoldenfan.Services
                     LastName = item.Person.LastName,
                     FirstName = item.Person.FirstName,
                     Position = item.Position,
+                    PositionOrder = item.PositionOrder,
                     ShirtNumber = item.ShirtNumber.HasValue?item.ShirtNumber.Value:0,
                     PositionSide = item.Position
                 };

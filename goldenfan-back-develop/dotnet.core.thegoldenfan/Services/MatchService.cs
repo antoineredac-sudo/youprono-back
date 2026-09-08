@@ -31,6 +31,10 @@ namespace dotnet.core.thegoldenfan.Services
         public string? FormationPlace { get; set; }
         public string? Position { get; set; }
         public string? PositionSide { get; set; }
+
+        // Rang de gauche a droite dans la ligne. 0 = non renseigne.
+        public int PositionOrder { get; set; }
+
         public List<StatResult> Stats { get; set; } = new List<StatResult>();
     }
     public class CalendarResult
