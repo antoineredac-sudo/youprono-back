@@ -253,6 +253,12 @@ namespace dotnet.core.thegoldenfan.Services
             public double? NoteTotal { get; set; }
             public int? MatchRank { get; set; }
             public int? GroupPoints { get; set; }
+
+            // Le classement cumulé du mini-championnat, après ce match et avant lui.
+            // Sert à montrer qui monte et qui descend. 0 = non classé.
+            public int? CyclePoints { get; set; }
+            public int? CycleRank { get; set; }
+            public int? CycleRankBefore { get; set; }
         }
 
         public class SalonResult
@@ -950,6 +956,47 @@ namespace dotnet.core.thegoldenfan.Services
                     if (points < 2) { points = 2; }
                     noted[i].GroupPoints = points;
                 }
+
+                // --- Le classement cumulé du mini-championnat, avant et après ---
+                // Les matchs du cycle en cours, du plus ancien au plus récent, avec
+                // les notes de tous les membres. Le rang « avant » se calcule en
+                // rejouant le même barème sans ce match.
+                var matchsDepuisCreation = await dbContext.Matches
+                    .Where(w => w.DateTime >= group.CreatedDate)
+                    .OrderBy(o => o.DateTime)
+                    .Select(s => new { s.Id, s.Status })
+                    .ToListAsync();
+
+                var idsDuCycle = matchsDepuisCreation
+                    .Where(w => IsPlayed(w.Status))
+                    .Select(s => s.Id)
+                    .ToList();
+
+                var notesDuCycle = (await dbContext.UserMatches
+                        .Where(w => memberIds.Contains(w.UserId)
+                                 && idsDuCycle.Contains(w.MatchId)
+                                 && w.ResultTotal.HasValue)
+                        .Select(s => new { s.MatchId, s.UserId, Note = s.ResultTotal.Value })
+                        .ToListAsync())
+                    .Select(x => (x.MatchId, x.UserId, x.Note));
+
+                var cumulApres = CumulCycle(memberIds, notesDuCycle, null);
+                var cumulAvant = CumulCycle(memberIds, notesDuCycle, matchId);
+
+                var rangsApres = RangsDepuisPoints(cumulApres);
+                var rangsAvant = RangsDepuisPoints(cumulAvant);
+
+                foreach (var row in members)
+                {
+                    row.CyclePoints = cumulApres.ContainsKey(row.UserId) ? cumulApres[row.UserId] : 0;
+                    row.CycleRank = rangsApres.ContainsKey(row.UserId) ? rangsApres[row.UserId] : 0;
+
+                    // Personne n'avait de rang avant le tout premier match du cycle :
+                    // dans ce cas on ne montre aucun mouvement.
+                    bool avaitJoue = cumulAvant.ContainsKey(row.UserId) && cumulAvant[row.UserId] > 0;
+                    row.CycleRankBefore = avaitJoue && rangsAvant.ContainsKey(row.UserId)
+                        ? rangsAvant[row.UserId] : 0;
+                }
             }
 
             // Ceux qui ont joué d'abord, les mieux notés en tête, les absents à la fin.
@@ -1011,6 +1058,50 @@ namespace dotnet.core.thegoldenfan.Services
             }
 
             return result;
+        }
+
+        // Le cumul du mini-championnat en cours, avec le barème positionnel ancré
+        // sur le dernier présent. Le même calcul que le classement de groupe, isolé
+        // ici pour pouvoir le rejouer en excluant un match — c'est ainsi qu'on
+        // connaît le rang d'avant.
+        private static Dictionary<Guid, int> CumulCycle(
+            List<Guid> memberIds,
+            IEnumerable<(string MatchId, Guid UserId, double Note)> notes,
+            string? excludeMatchId)
+        {
+            var points = memberIds.ToDictionary(k => k, v => 0);
+
+            var parMatch = notes
+                .Where(w => excludeMatchId == null || !w.MatchId.Equals(excludeMatchId))
+                .GroupBy(g => g.MatchId);
+
+            foreach (var m in parMatch)
+            {
+                var classees = m.OrderByDescending(o => o.Note).ToList();
+                int rang = 0;
+                for (int i = 0; i < classees.Count; i++)
+                {
+                    if (i > 0 && classees[i].Note != classees[i - 1].Note) { rang = i; }
+                    int score = classees.Count - rang + 1;
+                    if (score < 2) { score = 2; }
+                    if (points.ContainsKey(classees[i].UserId)) { points[classees[i].UserId] += score; }
+                }
+            }
+            return points;
+        }
+
+        private static Dictionary<Guid, int> RangsDepuisPoints(Dictionary<Guid, int> points)
+        {
+            var ordre = points.OrderByDescending(o => o.Value).Select(s => s.Key).ToList();
+            var rangs = new Dictionary<Guid, int>();
+
+            int rang = 0;
+            for (int i = 0; i < ordre.Count; i++)
+            {
+                if (i == 0 || points[ordre[i]] != points[ordre[i - 1]]) { rang = i + 1; }
+                rangs[ordre[i]] = rang;
+            }
+            return rangs;
         }
 
         // --- Ce qui s'est passe pour un joueur sur un match ---
