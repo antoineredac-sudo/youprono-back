@@ -156,6 +156,9 @@ namespace dotnet.core.thegoldenfan.Services
             public int MatchesPlayed { get; set; }
             public double ExpertCoef { get; set; }
             public int Rank { get; set; }
+
+            // Le rang avant le dernier match joué. 0 = pas de mouvement à montrer.
+            public int RankBefore { get; set; }
         }
 
         public class LeaveGroupResult
