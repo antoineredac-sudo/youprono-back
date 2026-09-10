@@ -519,6 +519,55 @@ namespace dotnet.core.thegoldenfan.Services
                 .Select(s => new { s.UserId, s.MatchId, s.ResultTotal, s.ResultFinalTotal })
                 .ToListAsync();
 
+            // Le classement se construit deux fois : sur tous les matchs joues, et
+            // sur tous sauf le dernier. La comparaison donne le mouvement de chacun.
+            List<GroupMemberRankingResult> Construire(List<string> matchsRetenus)
+            {
+                var pts = memberIds.ToDictionary(k => k, v => 0);
+                var nb = memberIds.ToDictionary(k => k, v => 0);
+
+                foreach (var idMatch in matchsRetenus)
+                {
+                    var notes = predictions
+                        .Where(w => w.MatchId.Equals(idMatch) && w.ResultTotal.HasValue)
+                        .OrderByDescending(o => o.ResultTotal.Value)
+                        .ToList();
+
+                    int r = 0;
+                    for (int i = 0; i < notes.Count; i++)
+                    {
+                        if (i > 0 && notes[i].ResultTotal.Value != notes[i - 1].ResultTotal.Value) { r = i; }
+                        int sc = notes.Count - r + 1;
+                        if (sc < 2) { sc = 2; }
+                        pts[notes[i].UserId] += sc;
+                        nb[notes[i].UserId] += 1;
+                    }
+                }
+
+                // Le departage : la moyenne des notes SUR LES MATCHS DU GROUPE, et non
+                // le coefficient expert de la saison. Deux joueurs a egalite de points
+                // sont separes par ce qu'ils ont fait dans ce mini-championnat, sur
+                // autant de matchs qu'il en a ete joue.
+                return group.Members.Select(m => new GroupMemberRankingResult
+                {
+                    UserId = m.UserId,
+                    DisplayName = m.User.DisplayName ?? "?",
+                    TotalScore = pts.ContainsKey(m.UserId) ? pts[m.UserId] : 0,
+                    MatchesPlayed = nb.ContainsKey(m.UserId) ? nb[m.UserId] : 0,
+                    ExpertCoef = Math.Round(predictions
+                        .Where(w => w.UserId.Equals(m.UserId)
+                                 && w.ResultTotal.HasValue
+                                 && matchsRetenus.Contains(w.MatchId))
+                        .Select(s => s.ResultTotal.Value)
+                        .DefaultIfEmpty(0)
+                        .Average(), 3)
+                })
+                .OrderByDescending(o => o.TotalScore)
+                .ThenByDescending(o => o.ExpertCoef)
+                .ThenBy(o => o.DisplayName)
+                .ToList();
+            }
+
             var points = memberIds.ToDictionary(k => k, v => 0);
             var played = memberIds.ToDictionary(k => k, v => 0);
 
@@ -548,24 +597,23 @@ namespace dotnet.core.thegoldenfan.Services
                 }
             }
 
-            var ranking = group.Members.Select(m => new GroupMemberRankingResult
-            {
-                UserId = m.UserId,
-                DisplayName = m.User.DisplayName ?? "?",
-                TotalScore = points.ContainsKey(m.UserId) ? points[m.UserId] : 0,
-                MatchesPlayed = played.ContainsKey(m.UserId) ? played[m.UserId] : 0,
-                ExpertCoef = predictions
-                    .Where(w => w.UserId.Equals(m.UserId) && w.ResultFinalTotal.HasValue)
-                    .Select(s => s.ResultFinalTotal.Value)
-                    .DefaultIfEmpty(0)
-                    .Max()
-            })
-            .OrderByDescending(o => o.TotalScore)
-            .ThenByDescending(o => o.ExpertCoef)
-            .ThenBy(o => o.DisplayName)
-            .ToList();
-
+            var idsJoues = playedMatches.Select(s => s.Id).ToList();
+            var ranking = Construire(idsJoues);
             for (int i = 0; i < ranking.Count; i++) { ranking[i].Rank = i + 1; }
+
+            // Le rang d'avant le dernier match joue. Aucun mouvement tant qu'il n'y
+            // a qu'un match : personne n'avait de place auparavant.
+            if (idsJoues.Count > 1)
+            {
+                var avant = Construire(idsJoues.Take(idsJoues.Count - 1).ToList());
+                var rangsAvant = new Dictionary<Guid, int>();
+                for (int i = 0; i < avant.Count; i++) { rangsAvant[avant[i].UserId] = i + 1; }
+
+                foreach (var r in ranking)
+                {
+                    r.RankBefore = rangsAvant.ContainsKey(r.UserId) ? rangsAvant[r.UserId] : 0;
+                }
+            }
 
             // Le vainqueur n'est proclamé qu'une fois les 5 matchs joués,
             // et seulement s'il a réellement marqué des points.
