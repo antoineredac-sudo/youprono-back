@@ -892,7 +892,31 @@ namespace dotnet.core.thegoldenfan.Services
             public int Rank { get; set; }
             public double Score { get; set; }
             public int Games { get; set; }
+
+            // Le rang avant le dernier match note. 0 = aucun mouvement a montrer.
+            public int RankBefore { get; set; }
         }
+
+        // Le dernier match note de l'equipe. Il sert a reconstituer le classement
+        // tel qu'il etait avant, pour montrer qui a gagne ou perdu des places.
+        private async Task<string?> DernierMatchNoteAsync(string teamId)
+        {
+            return await dbContext.UserMatches
+                .Where(w => w.TeamId.Equals(teamId) && w.ResultTotal.HasValue)
+                .Include(i => i.Match)
+                .OrderByDescending(o => o.Match.DateTime)
+                .Select(s => s.MatchId)
+                .FirstOrDefaultAsync();
+        }
+
+        private static void PoserMouvement(List<UserRanking> apres, Dictionary<Guid, int> avant)
+        {
+            foreach (var r in apres)
+            {
+                r.RankBefore = avant.ContainsKey(r.Id) ? avant[r.Id] : 0;
+            }
+        }
+
         public async Task<List<UserRanking>> RankingByResultFinalTotalAsync(string teamId)
         {
             List<UserRanking> res = new List<UserRanking>();
@@ -921,6 +945,20 @@ namespace dotnet.core.thegoldenfan.Services
             res = res.OrderByDescending(ob => ob.Score).ToList();
             int i = 0;
             foreach(var item in res) { item.Rank = i + 1; i++; }
+
+            // Le meme classement, sans le dernier match note : la difference des
+            // rangs donne le mouvement de chacun.
+            var dernier = await DernierMatchNoteAsync(teamId);
+            if (dernier != null)
+            {
+                var coefsAvant = await userService.ExpertCoefAllAsync(teamId, dernier);
+                var ordreAvant = coefsAvant.OrderByDescending(o => o.Value)
+                                           .Select(s => s.Key).ToList();
+                var rangsAvant = new Dictionary<Guid, int>();
+                for (int k = 0; k < ordreAvant.Count; k++) { rangsAvant[ordreAvant[k]] = k + 1; }
+                PoserMouvement(res, rangsAvant);
+            }
+
             return res;
         }
 
@@ -955,6 +993,29 @@ namespace dotnet.core.thegoldenfan.Services
 
             int i = 0;
             foreach (var item in res) { item.Rank = i + 1; i++; }
+
+            // Le record d'avant le dernier match note : le meilleur score de chacun
+            // sans ce match. Celui qui vient de battre son record monte.
+            var dernier = await DernierMatchNoteAsync(teamId);
+            if (dernier != null)
+            {
+                var avant = new List<(Guid Id, double Score)>();
+                foreach (var item in gb)
+                {
+                    var meilleur = item
+                        .Where(w => w.ResultTotal.HasValue && !w.MatchId.Equals(dernier))
+                        .Select(s => s.ResultTotal.Value)
+                        .DefaultIfEmpty(double.MinValue)
+                        .Max();
+                    if (meilleur > double.MinValue) { avant.Add((item.Key, meilleur)); }
+                }
+
+                var ordreAvant = avant.OrderByDescending(o => o.Score).Select(s => s.Id).ToList();
+                var rangsAvant = new Dictionary<Guid, int>();
+                for (int k = 0; k < ordreAvant.Count; k++) { rangsAvant[ordreAvant[k]] = k + 1; }
+                PoserMouvement(res, rangsAvant);
+            }
+
             return res;
         }
     }
