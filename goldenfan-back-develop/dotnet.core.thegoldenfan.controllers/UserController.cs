@@ -80,6 +80,40 @@ namespace dotnet.core.thegoldenfan.controllers
             return res;
         }
 
+        // Mot de passe ou pseudo oublie : on envoie le pseudo et un lien.
+        [HttpPost("Forgot")]
+        public async Task<ResponseModel<bool>> ForgotAsync([FromBody] UserService.ForgotModel model)
+        {
+            ResponseModel<bool> res = ResponseModel<bool>.CreateDefault();
+            try
+            {
+                var result = await service.ForgotAsync(model);
+                res = new ResponseModel<bool>(0, result);
+            }
+            catch (Exception ex)
+            {
+                res = ResponseModel<bool>.Exception(ex);
+            }
+            return res;
+        }
+
+        // Le nouveau mot de passe, avec le jeton recu par courriel.
+        [HttpPost("Reset")]
+        public async Task<ResponseModel<bool>> ResetAsync([FromBody] UserService.ResetModel model)
+        {
+            ResponseModel<bool> res = ResponseModel<bool>.CreateDefault();
+            try
+            {
+                var result = await service.ResetAsync(model);
+                res = new ResponseModel<bool>(0, result);
+            }
+            catch (Exception ex)
+            {
+                res = ResponseModel<bool>.Exception(ex);
+            }
+            return res;
+        }
+
         [HttpPost("Login")]
         public async Task<ResponseModel<string>> LoginAsync(LoginInputModel input)
         {
