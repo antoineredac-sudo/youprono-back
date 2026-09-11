@@ -36,6 +36,22 @@ namespace dotnet.core.thegoldenfan.Services
         // vingtaine d'heures.
         private const int ChampionDisplayHours = 24;
 
+        // ===== LA MEMOIRE COURTE DU DECOMPTE DES CHOIX =====
+        // Pour afficher « choisi 12 fois sur 38 », le salon lit tous les pronostics
+        // du match, tous joueurs confondus, avec les onze noms choisis par chacun.
+        // A trois cents participants cela fait plus de trois mille lignes, relues
+        // a chaque ouverture du salon, par chaque membre de chaque groupe — alors
+        // que le resultat est le meme pour tout le monde.
+        //
+        // On le garde donc quelques minutes. C'est sans danger : le salon ne
+        // s'ouvre qu'apres la cloture, quand plus personne ne peut modifier son
+        // pronostic. Le decompte ne bouge plus. Rien n'est range en base : la
+        // memoire disparait au redemarrage du serveur.
+        private const int CHOIX_MEMOIRE_SECONDES = 300;
+
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<string,
+            (DateTime Heure, Dictionary<string, int> Decompte, int Participants)> memoireChoix = new();
+
         // Les pronostics ferment ce nombre d'heures avant le coup d'envoi (heure de
         // Paris). Le site porte la même valeur, CLOTURE_AVANT_MS : les changer ensemble.
         private const int ClotureAvantHeures = 2;
@@ -328,6 +344,42 @@ namespace dotnet.core.thegoldenfan.Services
             var unspecified = DateTime.SpecifyKind(parisTime, DateTimeKind.Unspecified);
             try { return TimeZoneInfo.ConvertTimeToUtc(unspecified, ParisTimeZone); }
             catch { return unspecified; }
+        }
+
+        // Combien de fois chaque joueur de l'effectif a ete choisi sur ce match, et
+        // combien de personnes ont pronostique. Le meme resultat pour tous les
+        // groupes et tous les membres, donc garde en memoire quelques minutes.
+        private async Task<(Dictionary<string, int> Decompte, int Participants)> DecompteDesChoixAsync(
+            string teamId, string matchId)
+        {
+            string cle = teamId + "|" + matchId;
+
+            if (memoireChoix.TryGetValue(cle, out var entree)
+                && (DateTime.UtcNow - entree.Heure).TotalSeconds < CHOIX_MEMOIRE_SECONDES)
+            {
+                return (entree.Decompte, entree.Participants);
+            }
+
+            var toutesPredictions = await dbContext.UserMatches
+                .Where(w => w.MatchId.Equals(matchId) && w.TeamId.Equals(teamId))
+                .Include(i => i.UserPlayerForMatches)
+                .ToListAsync();
+
+            int participants = toutesPredictions.Count;
+
+            var decompte = new Dictionary<string, int>();
+            foreach (var prediction in toutesPredictions)
+            {
+                foreach (var pick in prediction.UserPlayerForMatches)
+                {
+                    if (pick.PersonId == null) { continue; }
+                    if (decompte.ContainsKey(pick.PersonId)) { decompte[pick.PersonId] += 1; }
+                    else { decompte[pick.PersonId] = 1; }
+                }
+            }
+
+            memoireChoix[cle] = (DateTime.UtcNow, decompte, participants);
+            return (decompte, participants);
         }
 
         // Un code court, lisible, sans caractères ambigus (pas de 0/O ni de 1/I)
@@ -898,23 +950,7 @@ namespace dotnet.core.thegoldenfan.Services
             // pronostiqué ce match, pas seulement les membres du groupe.
             int predictionCount = predictions.Count;
 
-            var toutesPredictions = await dbContext.UserMatches
-                .Where(w => w.MatchId.Equals(matchId) && w.TeamId.Equals(teamId))
-                .Include(i => i.UserPlayerForMatches)
-                .ToListAsync();
-
-            int participantCount = toutesPredictions.Count;
-
-            var choiceCount = new Dictionary<string, int>();
-            foreach (var prediction in toutesPredictions)
-            {
-                foreach (var pick in prediction.UserPlayerForMatches)
-                {
-                    if (pick.PersonId == null) { continue; }
-                    if (choiceCount.ContainsKey(pick.PersonId)) { choiceCount[pick.PersonId] += 1; }
-                    else { choiceCount[pick.PersonId] = 1; }
-                }
-            }
+            var (choiceCount, participantCount) = await DecompteDesChoixAsync(teamId, matchId);
 
             var members = new List<SalonMemberResult>();
             foreach (var member in group.Members)
