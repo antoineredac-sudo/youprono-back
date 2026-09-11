@@ -1198,6 +1198,31 @@ namespace dotnet.core.thegoldenfan.Services
 
             // Un par groupe d'amis, le mieux classe d'abord.
             public List<PodiumResult> Podiums { get; set; } = new();
+
+            // --- Le verdict du match ---
+            // Le site compare la note du joueur a la mediane de tous les joueurs
+            // notes sur ce match, et cite sa meilleure ou sa pire categorie. Ici on
+            // ne fait que fournir les chiffres : les seuils et les phrases sont au site.
+            public int ScoredCount { get; set; }
+            public double MatchMedian { get; set; }
+
+            // Cle de categorie : composition, score, possession, shots, fouls, crosses.
+            public string? BestCategory { get; set; }
+            public double BestCategoryNote { get; set; }
+            public string? WorstCategory { get; set; }
+            public double WorstCategoryNote { get; set; }
+        }
+
+        // Mediane d'une liste de notes : la valeur du milieu, ou la moyenne des deux
+        // du milieu quand il y en a un nombre pair. 0 pour une liste vide.
+        private static double Mediane(List<double> notes)
+        {
+            if (notes == null || notes.Count == 0) { return 0; }
+            var triees = notes.OrderBy(o => o).ToList();
+            int n = triees.Count;
+            return (n % 2 == 1)
+                ? triees[n / 2]
+                : (triees[n / 2 - 1] + triees[n / 2]) / 2.0;
         }
 
         // Le rang a partir duquel on felicite, selon la taille du groupe.
@@ -1232,6 +1257,51 @@ namespace dotnet.core.thegoldenfan.Services
             result.IsFirstScoredMatch = siennes.Count == 1;
             result.IsPersonalRecord = siennes.Count > 1
                 && siennes.All(a => a.MatchId.Equals(matchId) || a.Note < laSienne.Note);
+
+            // --- Le verdict : la mediane du match et ses categories extremes ---
+            var toutesLesNotes = await dbContext.UserMatches
+                .Where(w => w.MatchId.Equals(matchId) && w.TeamId.Equals(teamId) && w.ResultTotal.HasValue)
+                .Select(s => s.ResultTotal.Value)
+                .ToListAsync();
+            result.ScoredCount = toutesLesNotes.Count;
+            result.MatchMedian = Math.Round(Mediane(toutesLesNotes), 3);
+
+            var sonProno = await dbContext.UserMatches
+                .Where(w => w.UserId.Equals(userId) && w.MatchId.Equals(matchId) && w.TeamId.Equals(teamId))
+                .Select(s => new
+                {
+                    Composition = s.ResultTeamCompositionFormula,
+                    Score = s.ResultTeamScoreFormula,
+                    Possession = s.ResultTeamPossessionFormula,
+                    Shots = s.ResultTeamShotsFormula,
+                    Fouls = s.ResultTeamFoulsFormula,
+                    Crosses = s.ResultTeamCrossesFormula
+                })
+                .FirstOrDefaultAsync();
+
+            if (sonProno != null)
+            {
+                // Les memes notes que celles du detail par categorie sur l'ecran des resultats.
+                var categories = new List<KeyValuePair<string, double?>>
+                {
+                    new("composition", sonProno.Composition),
+                    new("score", sonProno.Score),
+                    new("possession", sonProno.Possession),
+                    new("shots", sonProno.Shots),
+                    new("fouls", sonProno.Fouls),
+                    new("crosses", sonProno.Crosses)
+                };
+                var connues = categories.Where(c => c.Value.HasValue).ToList();
+                if (connues.Count > 0)
+                {
+                    var meilleure = connues.OrderByDescending(o => o.Value.Value).First();
+                    var pire = connues.OrderBy(o => o.Value.Value).First();
+                    result.BestCategory = meilleure.Key;
+                    result.BestCategoryNote = Math.Round(meilleure.Value.Value, 3);
+                    result.WorstCategory = pire.Key;
+                    result.WorstCategoryNote = Math.Round(pire.Value.Value, 3);
+                }
+            }
 
             // --- Le classement general, avant et apres ---
             var apres = await userService.ExpertCoefAllAsync(teamId);
