@@ -201,10 +201,11 @@ namespace dotnet.core.thegoldenfan.Services
               + "border-radius:12px;padding:26px;\">"
               + "<div style=\"color:#e8b923;font-size:22px;font-weight:bold;margin-bottom:18px;\">YouProno</div>"
               + "<p style=\"font-size:16px;line-height:1.7;\">Salut " + nom + ",</p>"
-              + "<p style=\"font-size:16px;line-height:1.7;\">Tu viens de rejoindre YouProno, le jeu o&ugrave; le match "
-              + "se joue avant qu'il ne commence. &Agrave; toi de deviner le onze de d&eacute;part d'Enrique, la possession, les "
-              + "tirs, les fautes, les centres et le score. Deux heures avant le coup d'envoi, tout se ferme, et &agrave; "
-              + "la fin du match, tu as ta note.</p>"
+              + "<p style=\"font-size:16px;line-height:1.7;\">Tu viens de rejoindre YouProno, un terrain o&ugrave; le "
+              + "match se joue avant qu'il ne commence. &Agrave; toi de deviner le onze de d&eacute;part d'Enrique, la "
+              + "possession, les tirs, les fautes, les centres et le score. Deux heures avant le coup d'envoi les jeux "
+              + "sont faits, et tes pr&eacute;dictions seront compar&eacute;es aux stats officielles quelques minutes "
+              + "apr&egrave;s la fin du match.</p>"
               + fin
               + "<p style=\"font-size:16px;line-height:1.7;margin-top:22px;\">Antoine</p>"
               + "</div></div>";
