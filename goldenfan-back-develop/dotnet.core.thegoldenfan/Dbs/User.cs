@@ -22,6 +22,12 @@ public partial class User
 
     public bool EmailOptIn { get; set; }
 
+    // Reinitialisation du mot de passe : un jeton a usage unique, valable une
+    // heure. Les deux champs sont vides en temps normal.
+    public string? ResetToken { get; set; }
+
+    public DateTime? ResetTokenExpires { get; set; }
+
     public virtual ICollection<Follower> FollowerFollowerNavigations { get; } = new List<Follower>();
 
     public virtual ICollection<Follower> FollowerUsers { get; } = new List<Follower>();
