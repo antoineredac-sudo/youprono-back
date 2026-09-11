@@ -191,7 +191,8 @@ namespace dotnet.core.thegoldenfan.Services
 
               + para + "YouProno se joue entre experts du PSG et surtout entre amis. En jouant &agrave; plusieurs, "
               + "tu as une revanche &agrave; prendre tous les trois jours. D&eacute;fie tes amis et invite-les sur "
-              + "WhatsApp, ta comp&eacute;tition de groupe se construira automatiquement.</p>"
+              + "WhatsApp, ta comp&eacute;tition de groupe se construira automatiquement.<br><br>"
+              + "YouProno est un jeu gratuit et sans publicit&eacute; r&eacute;alis&eacute; par des passionn&eacute;s.</p>"
 
               + "<p style=\"text-align:center;margin:24px 0;\">"
               + "<a href=\"https://youprono.fr/#groups\" style=\"background:#da1f3d;color:#ffffff;"
@@ -203,8 +204,7 @@ namespace dotnet.core.thegoldenfan.Services
 
               + "<p style=\"font-size:12px;color:#9fb0d8;line-height:1.6;margin-top:26px;"
               + "border-top:1px solid #26478e;padding-top:14px;\">"
-              + "Tu re&ccedil;ois ce message parce que tu viens de cr&eacute;er un compte sur youprono.fr. "
-              + "Pour ne plus rien recevoir, r&eacute;ponds STOP &agrave; ce message.</p>"
+              + "R&eacute;ponds STOP pour ne plus recevoir de message.</p>"
               + "</div></div>";
 
             // La version texte du meme message. Un courriel qui n'existe qu'en
@@ -220,11 +220,11 @@ namespace dotnet.core.thegoldenfan.Services
               + "YouProno se joue entre experts du PSG et surtout entre amis. En jouant a plusieurs, tu as "
               + "une revanche a prendre tous les trois jours. Defie tes amis et invite-les sur WhatsApp, ta "
               + "competition de groupe se construira automatiquement : https://youprono.fr/#groups\n\n"
+              + "YouProno est un jeu gratuit et sans publicite realise par des passionnes.\n\n"
               + "Allez Paris\n\n"
               + "Antoine\n\n"
               + "---\n"
-              + "Tu recois ce message parce que tu viens de creer un compte sur youprono.fr.\n"
-              + "Pour ne plus rien recevoir, reponds STOP a ce message.";
+              + "Reponds STOP pour ne plus recevoir de message.";
 
             var charge = new
             {
