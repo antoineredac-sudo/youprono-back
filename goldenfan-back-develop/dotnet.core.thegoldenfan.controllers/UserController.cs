@@ -80,6 +80,27 @@ namespace dotnet.core.thegoldenfan.controllers
             return res;
         }
 
+        // Le courriel de bienvenue du soir. Appelee par UptimeRobot a 20 h,
+        // heure de Paris. Le code dans l'adresse evite qu'un passant la declenche.
+        [HttpGet("Welcome/{accessCode}")]
+        public async Task<ResponseModel<UserService.WelcomeResult>> WelcomeAsync(string accessCode)
+        {
+            ResponseModel<UserService.WelcomeResult> res = ResponseModel<UserService.WelcomeResult>.CreateDefault();
+            try
+            {
+                if (!string.Equals(accessCode, "psg2026", StringComparison.Ordinal))
+                { return ResponseModel<UserService.WelcomeResult>.CreateDefault(); }
+
+                var result = await service.WelcomeAsync();
+                res = new ResponseModel<UserService.WelcomeResult>(0, result);
+            }
+            catch (Exception ex)
+            {
+                res = ResponseModel<UserService.WelcomeResult>.Exception(ex);
+            }
+            return res;
+        }
+
         // Mot de passe ou pseudo oublie : on envoie le pseudo et un lien.
         [HttpPost("Forgot")]
         public async Task<ResponseModel<bool>> ForgotAsync([FromBody] UserService.ForgotModel model)
