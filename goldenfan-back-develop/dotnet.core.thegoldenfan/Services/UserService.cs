@@ -6,7 +6,10 @@ using Microsoft.EntityFrameworkCore;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Text;
+using System.Text.Json;
 using System.Threading.Tasks;
 using static dotnet.core.thegoldenfan.Services.UserStatsService;
 
@@ -104,6 +107,122 @@ namespace dotnet.core.thegoldenfan.Services
         // excludeMatchId permet de reconstituer le classement TEL QU'IL ETAIT avant
         // un match donne, pour dire au joueur combien de places il vient de gagner.
         // Le calcul reste ecrit ici et nulle part ailleurs.
+        // ===== MOT DE PASSE OU PSEUDO OUBLIE =====
+        // Le joueur donne son adresse. On lui renvoie son pseudo ET un lien de
+        // reinitialisation valable une heure. La reponse est toujours la meme,
+        // que l'adresse existe ou non : sans ca, le formulaire dirait qui est
+        // inscrit.
+
+        private static readonly HttpClient http = new HttpClient();
+
+        public class ForgotModel
+        {
+            public string Email { get; set; } = null!;
+        }
+
+        public class ResetModel
+        {
+            public string Token { get; set; } = null!;
+            public string Password { get; set; } = null!;
+        }
+
+        public async Task<bool> ForgotAsync(ForgotModel model)
+        {
+            string src = "UserService.ForgotAsync";
+            if (model == null || StringHelper.IsNull(model.Email))
+            { throw BaseException.InvalidModel(-1, src); }
+
+            string adresse = model.Email.Trim().ToLower();
+
+            var user = await dbContext.Users
+                .FirstOrDefaultAsync(w => w.Email != null && w.Email.ToLower().Equals(adresse));
+
+            // Adresse inconnue : on ne dit rien et on renvoie le meme succes.
+            if (user == null) { return true; }
+
+            user.ResetToken = Guid.NewGuid().ToString("N");
+            user.ResetTokenExpires = DateTime.UtcNow.AddHours(1);
+            await dbContext.SaveChangesAsync();
+
+            await EnvoyerCourrielAsync(user.Email!, user.DisplayName ?? "", user.ResetToken);
+            return true;
+        }
+
+        public async Task<bool> ResetAsync(ResetModel model)
+        {
+            string src = "UserService.ResetAsync";
+            if (model == null || StringHelper.IsNull(model.Token) || StringHelper.IsNull(model.Password))
+            { throw BaseException.InvalidModel(-1, src); }
+
+            if (model.Password.Length < 4) { throw BaseException.InvalidModel(-2, src); }
+
+            var user = await dbContext.Users
+                .FirstOrDefaultAsync(w => w.ResetToken != null && w.ResetToken.Equals(model.Token));
+
+            if (user == null || !user.ResetTokenExpires.HasValue
+                || user.ResetTokenExpires.Value < DateTime.UtcNow)
+            { throw BaseException.NotFound(-3, src); }
+
+            user.Password = PasswordHelper.HashPassword(model.Password);
+
+            // Le jeton ne sert qu'une fois.
+            user.ResetToken = null;
+            user.ResetTokenExpires = null;
+            await dbContext.SaveChangesAsync();
+            return true;
+        }
+
+        // L'envoi passe par l'API de Brevo. La cle vit dans une variable
+        // d'environnement Render : elle n'apparait jamais dans le code.
+        // Sans cle, l'envoi est simplement ignore — le reste du jeu continue.
+        private static async Task EnvoyerCourrielAsync(string adresse, string pseudo, string jeton)
+        {
+            string cle = Environment.GetEnvironmentVariable("BREVO_API_KEY") ?? "";
+            if (string.IsNullOrWhiteSpace(cle)) { return; }
+
+            string expediteur = Environment.GetEnvironmentVariable("MAIL_FROM") ?? "contact@youprono.fr";
+            string lien = "https://youprono.fr/#reset/" + jeton;
+
+            string corps =
+                "<div style=\"font-family:Arial,sans-serif;background:#0b2265;padding:28px;color:#ffffff;\">"
+              + "<div style=\"max-width:520px;margin:0 auto;background:#14306f;border:1px solid #26478e;"
+              + "border-radius:12px;padding:26px;\">"
+              + "<div style=\"color:#e8b923;font-size:22px;font-weight:bold;\">YouProno</div>"
+              + "<p style=\"font-size:16px;line-height:1.6;\">Ton pseudo est <b style=\"color:#e8b923;\">"
+              + System.Net.WebUtility.HtmlEncode(pseudo) + "</b>.</p>"
+              + "<p style=\"font-size:16px;line-height:1.6;\">Si tu as aussi oubli&eacute; ton mot de passe, "
+              + "choisis-en un nouveau ici :</p>"
+              + "<p style=\"text-align:center;margin:26px 0;\">"
+              + "<a href=\"" + lien + "\" style=\"background:#da1f3d;color:#ffffff;text-decoration:none;"
+              + "padding:14px 26px;border-radius:8px;font-weight:bold;display:inline-block;\">"
+              + "Choisir un nouveau mot de passe</a></p>"
+              + "<p style=\"font-size:13px;color:#9fb0d8;line-height:1.6;\">Ce lien est valable une heure. "
+              + "Si tu n'as rien demand&eacute;, ignore ce message : ton compte n'a pas boug&eacute;.</p>"
+              + "</div></div>";
+
+            var charge = new
+            {
+                sender = new { name = "YouProno", email = expediteur },
+                to = new[] { new { email = adresse } },
+                subject = "Ton pseudo YouProno et ton lien de mot de passe",
+                htmlContent = corps
+            };
+
+            try
+            {
+                using var req = new HttpRequestMessage(HttpMethod.Post, "https://api.brevo.com/v3/smtp/email");
+                req.Headers.Add("api-key", cle);
+                req.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+                req.Content = new StringContent(JsonSerializer.Serialize(charge), Encoding.UTF8, "application/json");
+                await http.SendAsync(req);
+            }
+            catch
+            {
+                // Un envoi qui echoue ne doit jamais faire echouer la demande :
+                // le joueur verra le meme message et pourra reessayer.
+            }
+        }
+
         public async Task<Dictionary<Guid, double>> ExpertCoefAllAsync(string teamId, string? excludeMatchId = null)
         {
             var moyennes = await dbContext
