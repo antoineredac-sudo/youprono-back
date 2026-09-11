@@ -382,6 +382,25 @@ namespace dotnet.core.thegoldenfan.Services
             return (decompte, participants);
         }
 
+        // ===== QUI ETAIT LA, ET QUAND =====
+        // Un joueur qui rejoint un groupe aujourd'hui n'a pas a figurer dans le
+        // classement des matchs joues avant son arrivee : il n'a rien manque, il
+        // n'etait pas la. La table des membres garde la date d'entree de chacun,
+        // c'est elle qui fait foi.
+        //
+        // Le repere est la CLOTURE DES PRONOSTICS, pas le coup d'envoi : celui qui
+        // arrive apres la cloture n'a pas pu jouer ce match, il n'en fait donc pas
+        // partie. Celui qui arrive avant, meme d'une minute, en fait partie.
+        //
+        // Les dates d'entree sont enregistrees en heure universelle et les coups
+        // d'envoi en heure de Paris : la conversion est indispensable, sans elle
+        // deux heures d'ecart fausseraient chaque comparaison.
+        private static bool EtaitPresent(GroupMember membre, DateTime coupDEnvoiParis)
+        {
+            DateTime clotureUtc = ParisToUtc(coupDEnvoiParis.AddHours(-ClotureAvantHeures));
+            return membre.DateJoined <= clotureUtc;
+        }
+
         // Un code court, lisible, sans caractères ambigus (pas de 0/O ni de 1/I)
         private static string GenerateInviteCode()
         {
@@ -604,7 +623,16 @@ namespace dotnet.core.thegoldenfan.Services
                 // le coefficient expert de la saison. Deux joueurs a egalite de points
                 // sont separes par ce qu'ils ont fait dans ce mini-championnat, sur
                 // autant de matchs qu'il en a ete joue.
-                return group.Members.Select(m => new GroupMemberRankingResult
+                // Seuls les membres deja presents au dernier match retenu figurent
+                // au classement. Celui qui vient d'arriver entrera au prochain match.
+                DateTime borne = matchsRetenus.Count > 0
+                    ? cycleMatches.Where(w => matchsRetenus.Contains(w.Id))
+                                  .Select(s => s.DateTime).Max()
+                    : DateTime.MaxValue;
+
+                return group.Members
+                    .Where(w => EtaitPresent(w, borne))
+                    .Select(m => new GroupMemberRankingResult
                 {
                     UserId = m.UserId,
                     DisplayName = m.User.DisplayName ?? "?",
@@ -768,6 +796,7 @@ namespace dotnet.core.thegoldenfan.Services
 
                 var memberIds = group.Members.Select(m => m.UserId).ToList();
                 var allIds = allMatches.Select(s => s.Id).ToList();
+                var entrees = group.Members.ToDictionary(k => k.UserId, v => v.DateJoined);
 
                 var predictions = await dbContext.UserMatches
                     .Where(w => memberIds.Contains(w.UserId) && allIds.Contains(w.MatchId))
@@ -782,7 +811,12 @@ namespace dotnet.core.thegoldenfan.Services
                     if (now < block.Last().DateTime.AddHours(ChampionDisplayHours)) { break; }
 
                     // Meme bareme que le classement de groupe : ancre sur le dernier present.
-                    var points = memberIds.ToDictionary(k => k, v => 0);
+                    // Seuls les membres deja presents au dernier match du cycle y figurent.
+                    DateTime finDuCycle = block.Last().DateTime;
+                    DateTime clotureFinDeCycle = ParisToUtc(finDuCycle.AddHours(-ClotureAvantHeures));
+                    var points = memberIds
+                        .Where(w => entrees.ContainsKey(w) && entrees[w] <= clotureFinDeCycle)
+                        .ToDictionary(k => k, v => 0);
                     foreach (var m in block)
                     {
                         var noted = predictions
@@ -798,7 +832,8 @@ namespace dotnet.core.thegoldenfan.Services
 
                             int score = noted.Count - rank + 1;
                             if (score < 2) { score = 2; }
-                            points[noted[i].UserId] += score;
+                            if (points.ContainsKey(noted[i].UserId))
+                            { points[noted[i].UserId] += score; }
                         }
                     }
 
@@ -936,7 +971,13 @@ namespace dotnet.core.thegoldenfan.Services
 
             bool scored = IsScored(match.Status);
 
-            var memberIds = group.Members.Select(s => s.UserId).ToList();
+            // Seuls ceux qui etaient membres au moment du match. Celui qui a rejoint
+            // le groupe depuis n'apparait pas dans le salon d'un match d'avant.
+            var membresDuSoir = group.Members
+                .Where(w => EtaitPresent(w, match.DateTime))
+                .ToList();
+
+            var memberIds = membresDuSoir.Select(s => s.UserId).ToList();
 
             // Les pronostics des membres sur ce match, avec les onze choisis par chacun.
             var predictions = await dbContext.UserMatches
@@ -953,7 +994,7 @@ namespace dotnet.core.thegoldenfan.Services
             var (choiceCount, participantCount) = await DecompteDesChoixAsync(teamId, matchId);
 
             var members = new List<SalonMemberResult>();
-            foreach (var member in group.Members)
+            foreach (var member in membresDuSoir)
             {
                 var prediction = predictions.FirstOrDefault(w => w.UserId.Equals(member.UserId));
 
@@ -1111,7 +1152,7 @@ namespace dotnet.core.thegoldenfan.Services
                 TeamIsHome = teamIsHome,
                 GroupId = group.Id,
                 GroupName = group.Name,
-                MemberCount = group.Members.Count,
+                MemberCount = membresDuSoir.Count,
                 PredictionCount = predictionCount,
                 ParticipantCount = participantCount,
                 HasOfficialComposition = hasComposition,
@@ -1356,9 +1397,19 @@ namespace dotnet.core.thegoldenfan.Services
                 .Where(w => w.Members.Any(a => a.UserId.Equals(userId)) && w.Type != TypeKop && w.Type != TypeKopMedia)
                 .ToListAsync();
 
+            // La date du match sert de repere : un membre arrive depuis n'a pas
+            // sa place dans le classement de ce soir-la.
+            var dateDuMatch = await dbContext.Matches
+                .Where(w => w.Id.Equals(matchId))
+                .Select(s => s.DateTime)
+                .FirstOrDefaultAsync();
+
             foreach (var g in groupes)
             {
-                var membreIds = g.Members.Select(m => m.UserId).ToList();
+                var membresDuSoir = g.Members.Where(w => EtaitPresent(w, dateDuMatch)).ToList();
+                if (!membresDuSoir.Any(a => a.UserId.Equals(userId))) { continue; }
+
+                var membreIds = membresDuSoir.Select(m => m.UserId).ToList();
 
                 var notes = await dbContext.UserMatches
                     .Where(w => w.MatchId.Equals(matchId) && w.TeamId.Equals(teamId)
@@ -1370,16 +1421,22 @@ namespace dotnet.core.thegoldenfan.Services
                 int rang = classees.FindIndex(f => f.UserId.Equals(userId)) + 1;
                 if (rang == 0) { continue; }
 
+                // Un classement a un joueur n'en est pas un. Tant qu'un seul membre
+                // du groupe est note sur ce match, on ne dit rien : sans ce garde-fou,
+                // un duel ou l'adversaire n'a pas joue annonce « tu as battu X », et
+                // un groupe de huit ou l'on est seul annonce « meilleure note ».
+                if (classees.Count < 2) { continue; }
+
                 int profondeur = PodiumDepthFor(g.Members.Count);
                 var podium = new PodiumResult
                 {
                     GroupId = g.Id,
                     GroupName = g.Name,
-                    MemberCount = g.Members.Count,
+                    MemberCount = membresDuSoir.Count,
                     Rank = rang,
-                    OpponentName = g.Members.Count == 2
-                        ? g.Members.Where(w => !w.UserId.Equals(userId))
-                                   .Select(sm => sm.User.DisplayName).FirstOrDefault()
+                    OpponentName = membresDuSoir.Count == 2
+                        ? membresDuSoir.Where(w => !w.UserId.Equals(userId))
+                                       .Select(sm => sm.User.DisplayName).FirstOrDefault()
                         : null
                 };
 
