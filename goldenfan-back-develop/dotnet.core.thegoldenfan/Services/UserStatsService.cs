@@ -60,6 +60,44 @@ namespace dotnet.core.thegoldenfan.Services
 
     public class UserStatsService
     {
+        // ===== LA MEMOIRE COURTE DES CLASSEMENTS =====
+        // Les deux classements generaux recalculent le coefficient expert de tous
+        // les joueurs a chaque consultation. A huit joueurs c'est instantane ; le
+        // soir d'un match, avec trois cents joueurs qui ouvrent l'ecran en meme
+        // temps, c'est le meme calcul refait des dizaines de fois.
+        //
+        // Le premier qui demande declenche le calcul, les suivants recoivent la
+        // meme reponse pendant CLASSEMENT_MEMOIRE_SECONDES. Rien n'est range en
+        // base : la memoire disparait au redemarrage, et un classement faux ne
+        // peut donc pas survivre. La notation d'un match l'efface tout de suite,
+        // pour que la nouvelle photo soit immediate.
+        private const int CLASSEMENT_MEMOIRE_SECONDES = 60;
+
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<string, (DateTime Heure, List<UserRanking> Valeur)>
+            memoireClassements = new();
+
+        private static List<UserRanking>? LireMemoire(string cle)
+        {
+            if (memoireClassements.TryGetValue(cle, out var entree)
+                && (DateTime.UtcNow - entree.Heure).TotalSeconds < CLASSEMENT_MEMOIRE_SECONDES)
+            {
+                return entree.Valeur;
+            }
+            return null;
+        }
+
+        private static void EcrireMemoire(string cle, List<UserRanking> valeur)
+        {
+            memoireClassements[cle] = (DateTime.UtcNow, valeur);
+        }
+
+        // Appelee des qu'un match est note : les classements changent, la photo
+        // precedente ne vaut plus rien.
+        public static void OublierClassements()
+        {
+            memoireClassements.Clear();
+        }
+
         public static Dictionary<string, double[]> _COEF_ { get; set; } = new Dictionary<string, double[]>()
         {
             { "POSSESSION", new [ ]{ 5.3, 1, 1.42 } },
@@ -631,6 +669,9 @@ namespace dotnet.core.thegoldenfan.Services
                 .Select(s => s.UserId)
                 .ToListAsync();
             await UpdateUsersAsync(lo, matchId, teamId);
+
+            // Les notes viennent de changer : la photo precedente ne vaut plus rien.
+            OublierClassements();
         }
 
         private UserStatsResult CreateResultModel(UserMatch model)
@@ -919,6 +960,9 @@ namespace dotnet.core.thegoldenfan.Services
 
         public async Task<List<UserRanking>> RankingByResultFinalTotalAsync(string teamId)
         {
+            var enMemoire = LireMemoire("expert:" + teamId);
+            if (enMemoire != null) { return enMemoire; }
+
             List<UserRanking> res = new List<UserRanking>();
             var coefs = await userService.ExpertCoefAllAsync(teamId);
             var gb = await dbContext
@@ -959,11 +1003,15 @@ namespace dotnet.core.thegoldenfan.Services
                 PoserMouvement(res, rangsAvant);
             }
 
+            EcrireMemoire("expert:" + teamId, res);
             return res;
         }
 
         public async Task<List<UserRanking>> RankingByResultTotalAsync(string teamId)
         {
+            var enMemoire = LireMemoire("record:" + teamId);
+            if (enMemoire != null) { return enMemoire; }
+
             List<UserRanking> res = new List<UserRanking>();
             var gb = await dbContext
                 .UserMatches
@@ -1016,6 +1064,7 @@ namespace dotnet.core.thegoldenfan.Services
                 PoserMouvement(res, rangsAvant);
             }
 
+            EcrireMemoire("record:" + teamId, res);
             return res;
         }
     }
