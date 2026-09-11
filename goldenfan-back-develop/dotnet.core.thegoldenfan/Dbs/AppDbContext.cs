@@ -451,6 +451,7 @@ public partial class AppDbContext : DbContext
             entity.Property(e => e.EmailOptIn).HasDefaultValue(false);
             entity.Property(e => e.ResetToken).HasMaxLength(64);
             entity.Property(e => e.ResetTokenExpires);
+            entity.Property(e => e.WelcomeSentAt);
         });
 
         modelBuilder.Entity<UserMatch>(entity =>

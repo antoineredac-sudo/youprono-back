@@ -28,6 +28,10 @@ public partial class User
 
     public DateTime? ResetTokenExpires { get; set; }
 
+    // Date d'envoi du courriel de bienvenue. Vide tant qu'il n'est pas parti :
+    // c'est ce qui empeche un second envoi si la route est appelee deux fois.
+    public DateTime? WelcomeSentAt { get; set; }
+
     public virtual ICollection<Follower> FollowerFollowerNavigations { get; } = new List<Follower>();
 
     public virtual ICollection<Follower> FollowerUsers { get; } = new List<Follower>();
