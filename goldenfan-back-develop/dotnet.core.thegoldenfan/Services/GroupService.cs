@@ -1206,6 +1206,9 @@ namespace dotnet.core.thegoldenfan.Services
             public int ScoredCount { get; set; }
             public double MatchMedian { get; set; }
 
+            // Son rang sur ce match parmi tous les joueurs notes, 1 = meilleure note.
+            public int MatchRank { get; set; }
+
             // Cle de categorie : composition, score, possession, shots, fouls, crosses.
             public string? BestCategory { get; set; }
             public double BestCategoryNote { get; set; }
@@ -1265,6 +1268,7 @@ namespace dotnet.core.thegoldenfan.Services
                 .ToListAsync();
             result.ScoredCount = toutesLesNotes.Count;
             result.MatchMedian = Math.Round(Mediane(toutesLesNotes), 3);
+            result.MatchRank = toutesLesNotes.Count(c => c > laSienne.Note) + 1;
 
             var sonProno = await dbContext.UserMatches
                 .Where(w => w.UserId.Equals(userId) && w.MatchId.Equals(matchId) && w.TeamId.Equals(teamId))
