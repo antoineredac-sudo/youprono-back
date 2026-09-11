@@ -107,6 +107,130 @@ namespace dotnet.core.thegoldenfan.Services
         // excludeMatchId permet de reconstituer le classement TEL QU'IL ETAIT avant
         // un match donne, pour dire au joueur combien de places il vient de gagner.
         // Le calcul reste ecrit ici et nulle part ailleurs.
+        // ===== LE COURRIEL DE BIENVENUE =====
+        // Envoye chaque soir a 20 h, heure de Paris, a tous ceux qui se sont
+        // inscrits depuis le dernier envoi. Le serveur ne sait pas se reveiller
+        // seul : c'est UptimeRobot qui appelle la route, et la colonne
+        // WelcomeSentAt garantit qu'un inscrit ne recoit le message qu'une fois,
+        // meme si la route est appelee dix fois.
+        //
+        // Deux versions du texte : celui qui est arrive seul, a qui on explique
+        // comment defier ses amis, et celui qui est arrive par une invitation,
+        // qui a deja son groupe. Les textes sont d'Antoine.
+
+        public class WelcomeResult
+        {
+            public int Envoyes { get; set; }
+            public int SansAdresse { get; set; }
+            public List<string> Pseudos { get; set; } = new();
+        }
+
+        public async Task<WelcomeResult> WelcomeAsync()
+        {
+            var result = new WelcomeResult();
+
+            // Tous ceux qui n'ont jamais recu le message. Un inscrit de la nuit
+            // ou d'un jour ou la route n'a pas ete appelee n'est pas oublie.
+            var nouveaux = await dbContext.Users
+                .Where(w => w.WelcomeSentAt == null && w.Email != null && w.Email != "")
+                .ToListAsync();
+
+            if (nouveaux.Count == 0) { return result; }
+
+            var ids = nouveaux.Select(s => s.Id).ToList();
+
+            // Qui appartient deja a un groupe : celui-la est arrive par une invitation.
+            var accompagnes = await dbContext.GroupMembers
+                .Where(w => ids.Contains(w.UserId))
+                .Select(s => s.UserId)
+                .Distinct()
+                .ToListAsync();
+
+            foreach (var user in nouveaux)
+            {
+                bool dansUnGroupe = accompagnes.Contains(user.Id);
+                await EnvoyerBienvenueAsync(user.Email!, user.DisplayName ?? "", dansUnGroupe);
+
+                user.WelcomeSentAt = DateTime.UtcNow;
+                result.Envoyes++;
+                result.Pseudos.Add(user.DisplayName ?? "");
+            }
+
+            // Ceux qui n'ont pas d'adresse sont marques aussi, pour ne pas etre
+            // repasses en revue chaque soir jusqu'a la fin des temps.
+            var sansAdresse = await dbContext.Users
+                .Where(w => w.WelcomeSentAt == null && (w.Email == null || w.Email == ""))
+                .ToListAsync();
+            foreach (var user in sansAdresse) { user.WelcomeSentAt = DateTime.UtcNow; }
+            result.SansAdresse = sansAdresse.Count;
+
+            await dbContext.SaveChangesAsync();
+            return result;
+        }
+
+        private static async Task EnvoyerBienvenueAsync(string adresse, string pseudo, bool dansUnGroupe)
+        {
+            string cle = Environment.GetEnvironmentVariable("BREVO_API_KEY") ?? "";
+            if (string.IsNullOrWhiteSpace(cle)) { return; }
+
+            string expediteur = Environment.GetEnvironmentVariable("MAIL_FROM") ?? "contact@youprono.fr";
+            string nom = System.Net.WebUtility.HtmlEncode(pseudo);
+
+            // Le troisieme paragraphe et la chute changent selon que le joueur
+            // est arrive seul ou par une invitation.
+            string fin = dansUnGroupe
+                ? "<p style=\"font-size:16px;line-height:1.7;\">YouProno est un jeu qui se joue entre experts du PSG "
+                  + "et surtout entre amis, et tu as bien fait de ne pas venir seul. Tout seul, tu as une note et une "
+                  + "place au classement. &Agrave; cinq, tu as une revanche &agrave; prendre tous les trois jours.</p>"
+                  + "<p style=\"font-size:16px;line-height:1.7;\">Ton groupe t'attend d&eacute;j&agrave;. Rendez-vous au "
+                  + "prochain match, on verra qui sont les vrais experts du PSG parmi vous. Allez Paris</p>"
+                : "<p style=\"font-size:16px;line-height:1.7;\">YouProno est un jeu qui se joue entre experts du PSG "
+                  + "et surtout entre amis. Tout seul, tu as une note et une place au classement. &Agrave; cinq, tu as "
+                  + "une revanche &agrave; prendre tous les trois jours.</p>"
+                  + "<p style=\"font-size:16px;line-height:1.7;\">D&eacute;fie tes amis et invite-les sur "
+                  + "WhatsApp, ta comp&eacute;tition de groupe se construira automatiquement.</p>"
+                  + "<p style=\"text-align:center;margin:24px 0;\">"
+                  + "<a href=\"https://youprono.fr/#groups\" style=\"background:#da1f3d;color:#ffffff;"
+                  + "text-decoration:none;padding:14px 26px;border-radius:8px;font-weight:bold;"
+                  + "display:inline-block;\">D&eacute;fie tes amis</a></p>"
+                  + "<p style=\"font-size:16px;line-height:1.7;\">Allez Paris</p>";
+
+            string corps =
+                "<div style=\"font-family:Arial,sans-serif;background:#0b2265;padding:28px;color:#ffffff;\">"
+              + "<div style=\"max-width:520px;margin:0 auto;background:#14306f;border:1px solid #26478e;"
+              + "border-radius:12px;padding:26px;\">"
+              + "<div style=\"color:#e8b923;font-size:22px;font-weight:bold;margin-bottom:18px;\">YouProno</div>"
+              + "<p style=\"font-size:16px;line-height:1.7;\">Salut " + nom + ",</p>"
+              + "<p style=\"font-size:16px;line-height:1.7;\">Tu viens de rejoindre YouProno, le jeu o&ugrave; le match "
+              + "se joue avant qu'il ne commence. &Agrave; toi de deviner le onze de d&eacute;part d'Enrique, la possession, les "
+              + "tirs, les fautes, les centres et le score. Deux heures avant le coup d'envoi, tout se ferme, et &agrave; "
+              + "la fin du match, tu as ta note.</p>"
+              + fin
+              + "<p style=\"font-size:16px;line-height:1.7;margin-top:22px;\">Antoine</p>"
+              + "</div></div>";
+
+            var charge = new
+            {
+                sender = new { name = "YouProno", email = expediteur },
+                to = new[] { new { email = adresse } },
+                subject = "Bienvenue sur YouProno",
+                htmlContent = corps
+            };
+
+            try
+            {
+                using var req = new HttpRequestMessage(HttpMethod.Post, "https://api.brevo.com/v3/smtp/email");
+                req.Headers.Add("api-key", cle);
+                req.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+                req.Content = new StringContent(JsonSerializer.Serialize(charge), Encoding.UTF8, "application/json");
+                await http.SendAsync(req);
+            }
+            catch
+            {
+                // Un envoi qui echoue ne bloque pas les suivants.
+            }
+        }
+
         // ===== MOT DE PASSE OU PSEUDO OUBLIE =====
         // Le joueur donne son adresse. On lui renvoie son pseudo ET un lien de
         // reinitialisation valable une heure. La reponse est toujours la meme,
