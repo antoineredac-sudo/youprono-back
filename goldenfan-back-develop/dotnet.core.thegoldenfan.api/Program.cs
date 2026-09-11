@@ -45,6 +45,10 @@ using (var scope = app.Services.CreateScope())
         db.Database.ExecuteSqlRaw(
             "ALTER TABLE \"User\" ADD COLUMN IF NOT EXISTS \"ResetTokenExpires\" timestamp without time zone;");
 
+        // Date d'envoi du courriel de bienvenue.
+        db.Database.ExecuteSqlRaw(
+            "ALTER TABLE \"User\" ADD COLUMN IF NOT EXISTS \"WelcomeSentAt\" timestamp without time zone;");
+
         // Correction ponctuelle : quelques joueurs n'ont qu'un nom d'usage et ont
         // ete enregistres avec le meme prenom et le meme nom — « Marquinhos
         // Marquinhos », « Vitinha Vitinha ». On vide le prenom.
