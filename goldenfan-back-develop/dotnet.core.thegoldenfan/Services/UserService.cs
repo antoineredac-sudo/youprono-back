@@ -154,6 +154,11 @@ namespace dotnet.core.thegoldenfan.Services
                 user.WelcomeSentAt = DateTime.UtcNow;
                 result.Envoyes++;
                 result.Pseudos.Add(user.DisplayName ?? "");
+
+                // Espacer les envois : dix messages identiques partis dans la
+                // meme seconde ressemblent a une campagne, et les filtres les
+                // traitent comme telle. Trois secondes suffisent a casser ca.
+                if (result.Envoyes < nouveaux.Count) { await Task.Delay(3000); }
             }
 
             // Ceux qui n'ont pas d'adresse sont marques aussi, pour ne pas etre
@@ -208,14 +213,52 @@ namespace dotnet.core.thegoldenfan.Services
               + "apr&egrave;s la fin du match.</p>"
               + fin
               + "<p style=\"font-size:16px;line-height:1.7;margin-top:22px;\">Antoine</p>"
+              + "<p style=\"font-size:12px;color:#9fb0d8;line-height:1.6;margin-top:26px;"
+              + "border-top:1px solid #26478e;padding-top:14px;\">"
+              + "Tu re&ccedil;ois ce message parce que tu viens de cr&eacute;er un compte sur youprono.fr. "
+              + "Pour ne plus rien recevoir, r&eacute;ponds STOP &agrave; ce message.</p>"
               + "</div></div>";
+
+            // La version texte du meme message. Un courriel qui n'existe qu'en
+            // HTML est un signal de campagne : les vrais messages portent les deux.
+            string texteBrut =
+                "Salut " + pseudo + ",\n\n"
+              + "Tu viens de rejoindre YouProno, un terrain ou le match se joue avant qu'il ne commence. "
+              + "A toi de deviner le onze de depart d'Enrique, la possession, les tirs, les fautes, les "
+              + "centres et le score. Deux heures avant le coup d'envoi les jeux sont faits, et tes "
+              + "predictions seront comparees aux stats officielles quelques minutes apres la fin du match.\n\n"
+              + (dansUnGroupe
+                  ? "YouProno est un jeu qui se joue entre experts du PSG et surtout entre amis, et tu as bien "
+                    + "fait de ne pas venir seul. Tout seul, tu as une note et une place au classement. A cinq, "
+                    + "tu as une revanche a prendre tous les trois jours.\n\n"
+                    + "Ton groupe t'attend deja. Rendez-vous au prochain match, on verra qui sont les vrais "
+                    + "experts du PSG parmi vous. Allez Paris\n\n"
+                  : "YouProno est un jeu qui se joue entre experts du PSG et surtout entre amis. Tout seul, tu "
+                    + "as une note et une place au classement. A cinq, tu as une revanche a prendre tous les "
+                    + "trois jours.\n\n"
+                    + "Defie tes amis et invite-les sur WhatsApp, ta competition de groupe se construira "
+                    + "automatiquement : https://youprono.fr/#groups\n\n"
+                    + "Allez Paris\n\n")
+              + "Antoine\n\n"
+              + "---\n"
+              + "Tu recois ce message parce que tu viens de creer un compte sur youprono.fr.\n"
+              + "Pour ne plus rien recevoir, reponds STOP a ce message.";
 
             var charge = new
             {
                 sender = new { name = "YouProno", email = expediteur },
                 to = new[] { new { email = adresse } },
+                replyTo = new { email = expediteur, name = "YouProno" },
                 subject = "Bienvenue sur YouProno",
-                htmlContent = corps
+                htmlContent = corps,
+                textContent = texteBrut,
+                // Exige par Google et Yahoo depuis 2024 sur tout envoi groupe.
+                // Son absence suffit a faire classer le message en indesirables.
+                headers = new Dictionary<string, string>
+                {
+                    { "List-Unsubscribe", "<mailto:" + expediteur + "?subject=STOP>" },
+                    { "List-Unsubscribe-Post", "List-Unsubscribe=One-Click" }
+                }
             };
 
             try
