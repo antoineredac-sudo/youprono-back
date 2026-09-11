@@ -936,6 +936,13 @@ namespace dotnet.core.thegoldenfan.Services
 
             // Le rang avant le dernier match note. 0 = aucun mouvement a montrer.
             public int RankBefore { get; set; }
+
+            // Le seuil de participation : celui qui n'a pas joue la moitie des
+            // matchs qu'il pouvait jouer sort du classement. Rank vaut alors 0 et
+            // le site l'affiche en gris, en bas de liste.
+            public bool Ranked { get; set; } = true;
+            public int AttendancePlayed { get; set; }
+            public int AttendanceTotal { get; set; }
         }
 
         // Le dernier match note de l'equipe. Il sert a reconstituer le classement
@@ -956,6 +963,31 @@ namespace dotnet.core.thegoldenfan.Services
             {
                 r.RankBefore = avant.ContainsKey(r.Id) ? avant[r.Id] : 0;
             }
+        }
+
+        // Les classes d'abord, numerotes de 1 a n ; les non classes ensuite, sans
+        // rang. L'ordre interne de chaque bloc reste celui des notes.
+        private static List<UserRanking> AppliquerSeuil(
+            List<UserRanking> res, Dictionary<Guid, UserService.EligibiliteResult> eligibilite)
+        {
+            foreach (var r in res)
+            {
+                if (eligibilite.TryGetValue(r.Id, out var e))
+                {
+                    r.Ranked = e.Classe;
+                    r.AttendancePlayed = e.Joues;
+                    r.AttendanceTotal = e.Total;
+                }
+            }
+
+            var classes = res.Where(w => w.Ranked).ToList();
+            var sortis = res.Where(w => !w.Ranked).ToList();
+
+            for (int i = 0; i < classes.Count; i++) { classes[i].Rank = i + 1; }
+            foreach (var r in sortis) { r.Rank = 0; r.RankBefore = 0; }
+
+            classes.AddRange(sortis);
+            return classes;
         }
 
         public async Task<List<UserRanking>> RankingByResultFinalTotalAsync(string teamId)
@@ -1002,6 +1034,8 @@ namespace dotnet.core.thegoldenfan.Services
                 for (int k = 0; k < ordreAvant.Count; k++) { rangsAvant[ordreAvant[k]] = k + 1; }
                 PoserMouvement(res, rangsAvant);
             }
+
+            res = AppliquerSeuil(res, await userService.EligibiliteAllAsync(teamId));
 
             EcrireMemoire("expert:" + teamId, res);
             return res;
@@ -1063,6 +1097,8 @@ namespace dotnet.core.thegoldenfan.Services
                 for (int k = 0; k < ordreAvant.Count; k++) { rangsAvant[ordreAvant[k]] = k + 1; }
                 PoserMouvement(res, rangsAvant);
             }
+
+            res = AppliquerSeuil(res, await userService.EligibiliteAllAsync(teamId));
 
             EcrireMemoire("record:" + teamId, res);
             return res;

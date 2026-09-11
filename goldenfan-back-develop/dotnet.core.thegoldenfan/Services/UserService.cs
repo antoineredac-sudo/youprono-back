@@ -68,6 +68,73 @@ namespace dotnet.core.thegoldenfan.Services
             return new AttendanceResult { Played = (int)totalPrediction, Total = (int)totalMatch };
         }
 
+        // ===== LE SEUIL DE PARTICIPATION =====
+        // Un joueur figure au classement general s'il a pronostique au moins la
+        // moitie des matchs qu'il pouvait jouer. En dessous, il en sort : les rangs
+        // se renumerotent sans lui et il apparait en bas de liste, en gris.
+        //
+        // Ce qu'il pouvait jouer : les matchs notes dont la CLOTURE tombe apres son
+        // inscription. Le match en cours, non encore note, ne compte pas — sinon
+        // tout le monde sortirait du classement le soir d'un match.
+        //
+        // Propriete de la regle : un nouveau est classe des son premier match
+        // (1 sur 1), reste classe s'il en saute un (1 sur 2), et sort au deuxieme
+        // manque (1 sur 3).
+        public sealed class EligibiliteResult
+        {
+            public int Joues { get; set; }
+            public int Total { get; set; }
+            public bool Classe { get; set; }
+        }
+
+        // Calcule en une fois pour tout le monde : a trois cents joueurs, une
+        // requete par joueur serait ruineuse.
+        public async Task<Dictionary<Guid, EligibiliteResult>> EligibiliteAllAsync(string teamId)
+        {
+            // Les matchs de l'equipe reellement notes, avec leur coup d'envoi.
+            var matchsNotes = await dbContext.UserMatches
+                .Where(w => w.TeamId.Equals(teamId) && w.ResultTotal.HasValue)
+                .Include(i => i.Match)
+                .Select(s => new { s.MatchId, s.Match.DateTime })
+                .Distinct()
+                .ToListAsync();
+
+            // Chaque match ramene a l'heure de sa cloture, en heure universelle.
+            var clotures = matchsNotes
+                .GroupBy(g => g.MatchId)
+                .Select(g => GroupService.ParisToUtc(
+                    g.First().DateTime.AddHours(-GroupService.ClotureAvantHeures)))
+                .ToList();
+
+            // Ce que chacun a reellement joue.
+            var joues = await dbContext.UserMatches
+                .Where(w => w.TeamId.Equals(teamId) && w.ResultTotal.HasValue)
+                .GroupBy(g => g.UserId)
+                .Select(g => new { UserId = g.Key, Nb = g.Count() })
+                .ToListAsync();
+
+            var inscriptions = await dbContext.Users
+                .Select(s => new { s.Id, s.DateCreated })
+                .ToListAsync();
+
+            var res = new Dictionary<Guid, EligibiliteResult>();
+            foreach (var u in inscriptions)
+            {
+                int total = clotures.Count(c => c >= u.DateCreated);
+                int nb = joues.Where(w => w.UserId.Equals(u.Id)).Select(s => s.Nb).FirstOrDefault();
+
+                res[u.Id] = new EligibiliteResult
+                {
+                    Joues = nb,
+                    Total = total,
+                    // Aucun match a son actif depuis l'inscription : rien a lui
+                    // reprocher, il reste classe.
+                    Classe = total == 0 || (nb * 2) >= total
+                };
+            }
+            return res;
+        }
+
         // Conservé parce que UserStatsService range encore cette valeur en base
         // (ResultBonus). Elle n'entre plus dans le coefficient expert.
         public async Task<double> AttendanceBonusAsync(Guid userId, string teamId)

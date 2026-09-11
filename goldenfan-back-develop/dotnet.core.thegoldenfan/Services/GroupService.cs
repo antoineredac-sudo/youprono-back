@@ -54,7 +54,9 @@ namespace dotnet.core.thegoldenfan.Services
 
         // Les pronostics ferment ce nombre d'heures avant le coup d'envoi (heure de
         // Paris). Le site porte la même valeur, CLOTURE_AVANT_MS : les changer ensemble.
-        private const int ClotureAvantHeures = 2;
+        // Publique : UserService s'en sert pour savoir quels matchs un joueur
+        // pouvait jouer. Une seule definition du delai de cloture dans tout le back.
+        public const int ClotureAvantHeures = 2;
 
         // --- Les recompenses de groupe ---
         // Seuils de points cumules donnant droit a chaque metal, du bronze au diamant.
@@ -339,7 +341,7 @@ namespace dotnet.core.thegoldenfan.Services
             }
         }
 
-        private static DateTime ParisToUtc(DateTime parisTime)
+        public static DateTime ParisToUtc(DateTime parisTime)
         {
             var unspecified = DateTime.SpecifyKind(parisTime, DateTimeKind.Unspecified);
             try { return TimeZoneInfo.ConvertTimeToUtc(unspecified, ParisTimeZone); }
