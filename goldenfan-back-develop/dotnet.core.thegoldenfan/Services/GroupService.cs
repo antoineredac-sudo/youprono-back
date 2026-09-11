@@ -36,6 +36,10 @@ namespace dotnet.core.thegoldenfan.Services
         // vingtaine d'heures.
         private const int ChampionDisplayHours = 24;
 
+        // Les pronostics ferment ce nombre d'heures avant le coup d'envoi (heure de
+        // Paris). Le site porte la même valeur, CLOTURE_AVANT_MS : les changer ensemble.
+        private const int ClotureAvantHeures = 2;
+
         // --- Les recompenses de groupe ---
         // Seuils de points cumules donnant droit a chaque metal, du bronze au diamant.
         private static readonly int[] MedalThresholds = { 15, 22, 29, 36, 43 };
@@ -819,7 +823,7 @@ namespace dotnet.core.thegoldenfan.Services
         // Deux règles tenues ici, et nulle part ailleurs :
         // - le serveur refuse de répondre avant la clôture des pronostics. Un verrou
         //   posé seulement côté site laisserait lire les compositions des autres en
-        //   appelant l'adresse à la main, 24 h avant tout le monde ;
+        //   appelant l'adresse à la main, avant tout le monde ;
         // - cette route n'écrit rien. Ni statut, ni note, ni recalcul.
         public async Task<SalonResult> SalonAsync(string teamId, string matchId, Guid userId, Guid groupId)
         {
@@ -848,8 +852,8 @@ namespace dotnet.core.thegoldenfan.Services
                 .FirstOrDefaultAsync(w => w.Id.Equals(matchId));
             if (match == null) { throw BaseException.NotFound(-2, src); }
 
-            // Le verrou. La clôture tombe 24 h avant le coup d'envoi, heure de Paris.
-            DateTime clotureUtc = ParisToUtc(match.DateTime.AddHours(-24));
+            // Le verrou. La clôture tombe ClotureAvantHeures avant le coup d'envoi, heure de Paris.
+            DateTime clotureUtc = ParisToUtc(match.DateTime.AddHours(-ClotureAvantHeures));
             if (DateTime.UtcNow < clotureUtc) { throw BaseException.InvalidModel(-3, src); }
 
             var group = await dbContext.Groups
@@ -1447,7 +1451,7 @@ namespace dotnet.core.thegoldenfan.Services
                 .Take(40)
                 .ToListAsync();
 
-            var courant = matchs.FirstOrDefault(f => ParisToUtc(f.DateTime.AddHours(-24)) <= now);
+            var courant = matchs.FirstOrDefault(f => ParisToUtc(f.DateTime.AddHours(-ClotureAvantHeures)) <= now);
             if (courant == null) { return result; }
 
             var match = await dbContext.Matches
