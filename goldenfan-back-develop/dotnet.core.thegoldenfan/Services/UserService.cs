@@ -114,9 +114,9 @@ namespace dotnet.core.thegoldenfan.Services
         // WelcomeSentAt garantit qu'un inscrit ne recoit le message qu'une fois,
         // meme si la route est appelee dix fois.
         //
-        // Deux versions du texte : celui qui est arrive seul, a qui on explique
-        // comment defier ses amis, et celui qui est arrive par une invitation,
-        // qui a deja son groupe. Les textes sont d'Antoine.
+        // Un seul texte pour tout le monde, y compris ceux qui arrivent par une
+        // invitation : eux aussi peuvent vouloir inviter leurs propres amis.
+        // Le texte est d'Antoine.
 
         public class WelcomeResult
         {
@@ -135,21 +135,9 @@ namespace dotnet.core.thegoldenfan.Services
                 .Where(w => w.WelcomeSentAt == null && w.Email != null && w.Email != "")
                 .ToListAsync();
 
-            if (nouveaux.Count == 0) { return result; }
-
-            var ids = nouveaux.Select(s => s.Id).ToList();
-
-            // Qui appartient deja a un groupe : celui-la est arrive par une invitation.
-            var accompagnes = await dbContext.GroupMembers
-                .Where(w => ids.Contains(w.UserId))
-                .Select(s => s.UserId)
-                .Distinct()
-                .ToListAsync();
-
             foreach (var user in nouveaux)
             {
-                bool dansUnGroupe = accompagnes.Contains(user.Id);
-                await EnvoyerBienvenueAsync(user.Email!, user.DisplayName ?? "", dansUnGroupe);
+                await EnvoyerBienvenueAsync(user.Email!, user.DisplayName ?? "");
 
                 user.WelcomeSentAt = DateTime.UtcNow;
                 result.Envoyes++;
@@ -169,50 +157,50 @@ namespace dotnet.core.thegoldenfan.Services
             foreach (var user in sansAdresse) { user.WelcomeSentAt = DateTime.UtcNow; }
             result.SansAdresse = sansAdresse.Count;
 
-            await dbContext.SaveChangesAsync();
+            if (result.Envoyes > 0 || result.SansAdresse > 0)
+            { await dbContext.SaveChangesAsync(); }
+
             return result;
         }
 
-        private static async Task EnvoyerBienvenueAsync(string adresse, string pseudo, bool dansUnGroupe)
+        private static async Task EnvoyerBienvenueAsync(string adresse, string pseudo)
         {
             string cle = Environment.GetEnvironmentVariable("BREVO_API_KEY") ?? "";
             if (string.IsNullOrWhiteSpace(cle)) { return; }
 
             string expediteur = Environment.GetEnvironmentVariable("MAIL_FROM") ?? "contact@youprono.fr";
             string nom = System.Net.WebUtility.HtmlEncode(pseudo);
-
-            // Le troisieme paragraphe et la chute changent selon que le joueur
-            // est arrive seul ou par une invitation.
-            string fin = dansUnGroupe
-                ? "<p style=\"font-size:16px;line-height:1.7;\">YouProno est un jeu qui se joue entre experts du PSG "
-                  + "et surtout entre amis, et tu as bien fait de ne pas venir seul. Tout seul, tu as une note et une "
-                  + "place au classement. &Agrave; cinq, tu as une revanche &agrave; prendre tous les trois jours.</p>"
-                  + "<p style=\"font-size:16px;line-height:1.7;\">Ton groupe t'attend d&eacute;j&agrave;. Rendez-vous au "
-                  + "prochain match, on verra qui sont les vrais experts du PSG parmi vous. Allez Paris</p>"
-                : "<p style=\"font-size:16px;line-height:1.7;\">YouProno est un jeu qui se joue entre experts du PSG "
-                  + "et surtout entre amis. Tout seul, tu as une note et une place au classement. &Agrave; cinq, tu as "
-                  + "une revanche &agrave; prendre tous les trois jours.</p>"
-                  + "<p style=\"font-size:16px;line-height:1.7;\">D&eacute;fie tes amis et invite-les sur "
-                  + "WhatsApp, ta comp&eacute;tition de groupe se construira automatiquement.</p>"
-                  + "<p style=\"text-align:center;margin:24px 0;\">"
-                  + "<a href=\"https://youprono.fr/#groups\" style=\"background:#da1f3d;color:#ffffff;"
-                  + "text-decoration:none;padding:14px 26px;border-radius:8px;font-weight:bold;"
-                  + "display:inline-block;\">D&eacute;fie tes amis</a></p>"
-                  + "<p style=\"font-size:16px;line-height:1.7;\">Allez Paris</p>";
+            const string para = "<p style=\"font-size:16px;line-height:1.7;\">";
 
             string corps =
                 "<div style=\"font-family:Arial,sans-serif;background:#0b2265;padding:28px;color:#ffffff;\">"
               + "<div style=\"max-width:520px;margin:0 auto;background:#14306f;border:1px solid #26478e;"
               + "border-radius:12px;padding:26px;\">"
               + "<div style=\"color:#e8b923;font-size:22px;font-weight:bold;margin-bottom:18px;\">YouProno</div>"
-              + "<p style=\"font-size:16px;line-height:1.7;\">Salut " + nom + ",</p>"
-              + "<p style=\"font-size:16px;line-height:1.7;\">Tu viens de rejoindre YouProno, un terrain o&ugrave; le "
-              + "match se joue avant qu'il ne commence. &Agrave; toi de deviner le onze de d&eacute;part d'Enrique, la "
-              + "possession, les tirs, les fautes, les centres et le score. Deux heures avant le coup d'envoi les jeux "
-              + "sont faits, et tes pr&eacute;dictions seront compar&eacute;es aux stats officielles quelques minutes "
-              + "apr&egrave;s la fin du match.</p>"
-              + fin
+
+              + para + "Salut " + nom + ",</p>"
+
+              + para + "Tu viens de rejoindre YouProno, un terrain o&ugrave; le match se joue avant qu'il ne "
+              + "commence. Quelle compo va aligner Enrique ? Qui aura le contr&ocirc;le du jeu ? Le match "
+              + "sera-t-il ferm&eacute; ou en mode box to box ? La rencontre sera-t-elle engag&eacute;e ? Le jeu "
+              + "passera-t-il par l'axe ou les ailes ? Et surtout qui va gagner ?</p>"
+
+              + para + "&Agrave; toi d'anticiper jusqu'&agrave; 2 heures avant le coup d'envoi. Quelques minutes "
+              + "apr&egrave;s la fin du match, tes pr&eacute;dictions sont compar&eacute;es aux stats officielles "
+              + "pour te donner une note.</p>"
+
+              + para + "YouProno se joue entre experts du PSG et surtout entre amis. En jouant &agrave; plusieurs, "
+              + "tu as une revanche &agrave; prendre tous les trois jours. D&eacute;fie tes amis et invite-les sur "
+              + "WhatsApp, ta comp&eacute;tition de groupe se construira automatiquement.</p>"
+
+              + "<p style=\"text-align:center;margin:24px 0;\">"
+              + "<a href=\"https://youprono.fr/#groups\" style=\"background:#da1f3d;color:#ffffff;"
+              + "text-decoration:none;padding:14px 26px;border-radius:8px;font-weight:bold;"
+              + "display:inline-block;\">D&eacute;fie tes amis</a></p>"
+
+              + para + "Allez Paris</p>"
               + "<p style=\"font-size:16px;line-height:1.7;margin-top:22px;\">Antoine</p>"
+
               + "<p style=\"font-size:12px;color:#9fb0d8;line-height:1.6;margin-top:26px;"
               + "border-top:1px solid #26478e;padding-top:14px;\">"
               + "Tu re&ccedil;ois ce message parce que tu viens de cr&eacute;er un compte sur youprono.fr. "
@@ -224,21 +212,15 @@ namespace dotnet.core.thegoldenfan.Services
             string texteBrut =
                 "Salut " + pseudo + ",\n\n"
               + "Tu viens de rejoindre YouProno, un terrain ou le match se joue avant qu'il ne commence. "
-              + "A toi de deviner le onze de depart d'Enrique, la possession, les tirs, les fautes, les "
-              + "centres et le score. Deux heures avant le coup d'envoi les jeux sont faits, et tes "
-              + "predictions seront comparees aux stats officielles quelques minutes apres la fin du match.\n\n"
-              + (dansUnGroupe
-                  ? "YouProno est un jeu qui se joue entre experts du PSG et surtout entre amis, et tu as bien "
-                    + "fait de ne pas venir seul. Tout seul, tu as une note et une place au classement. A cinq, "
-                    + "tu as une revanche a prendre tous les trois jours.\n\n"
-                    + "Ton groupe t'attend deja. Rendez-vous au prochain match, on verra qui sont les vrais "
-                    + "experts du PSG parmi vous. Allez Paris\n\n"
-                  : "YouProno est un jeu qui se joue entre experts du PSG et surtout entre amis. Tout seul, tu "
-                    + "as une note et une place au classement. A cinq, tu as une revanche a prendre tous les "
-                    + "trois jours.\n\n"
-                    + "Defie tes amis et invite-les sur WhatsApp, ta competition de groupe se construira "
-                    + "automatiquement : https://youprono.fr/#groups\n\n"
-                    + "Allez Paris\n\n")
+              + "Quelle compo va aligner Enrique ? Qui aura le controle du jeu ? Le match sera-t-il ferme "
+              + "ou en mode box to box ? La rencontre sera-t-elle engagee ? Le jeu passera-t-il par l'axe "
+              + "ou les ailes ? Et surtout qui va gagner ?\n\n"
+              + "A toi d'anticiper jusqu'a 2 heures avant le coup d'envoi. Quelques minutes apres la fin du "
+              + "match, tes predictions sont comparees aux stats officielles pour te donner une note.\n\n"
+              + "YouProno se joue entre experts du PSG et surtout entre amis. En jouant a plusieurs, tu as "
+              + "une revanche a prendre tous les trois jours. Defie tes amis et invite-les sur WhatsApp, ta "
+              + "competition de groupe se construira automatiquement : https://youprono.fr/#groups\n\n"
+              + "Allez Paris\n\n"
               + "Antoine\n\n"
               + "---\n"
               + "Tu recois ce message parce que tu viens de creer un compte sur youprono.fr.\n"
