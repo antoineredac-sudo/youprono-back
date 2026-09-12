@@ -82,8 +82,8 @@ namespace dotnet.core.thegoldenfan.controllers
 
         // Le courriel de bienvenue du soir. Appelee par UptimeRobot a 20 h,
         // heure de Paris. Le code dans l'adresse evite qu'un passant la declenche.
-        [HttpGet("Welcome/{accessCode}")]
-        public async Task<ResponseModel<UserService.WelcomeResult>> WelcomeAsync(string accessCode)
+        [HttpGet("Welcome/{accessCode}/{teamId}")]
+        public async Task<ResponseModel<UserService.WelcomeResult>> WelcomeAsync(string accessCode, string teamId)
         {
             ResponseModel<UserService.WelcomeResult> res = ResponseModel<UserService.WelcomeResult>.CreateDefault();
             try
@@ -91,7 +91,7 @@ namespace dotnet.core.thegoldenfan.controllers
                 if (!string.Equals(accessCode, "psg2026", StringComparison.Ordinal))
                 { return ResponseModel<UserService.WelcomeResult>.CreateDefault(); }
 
-                var result = await service.WelcomeAsync();
+                var result = await service.WelcomeAsync(teamId);
                 res = new ResponseModel<UserService.WelcomeResult>(0, result);
             }
             catch (Exception ex)
