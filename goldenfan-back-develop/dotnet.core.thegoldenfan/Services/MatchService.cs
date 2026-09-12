@@ -286,6 +286,51 @@ namespace dotnet.core.thegoldenfan.Services
 
     public class MatchService
     {
+        // ===== LA MEMOIRE COURTE DU CALENDRIER =====
+        // Chaque joueur redemande le calendrier du PSG toutes les trois a cinq
+        // minutes, et la lecture charge TOUS les matchs de l'equipe avec leurs
+        // equipes, lieux et competitions. C'est la meme reponse pour tout le
+        // monde : on la garde une minute.
+        //
+        // Rien n'est range en base. La memoire est effacee des qu'un match
+        // change — creation, suppression, saisie des resultats, notation — donc
+        // elle ne peut jamais servir une photo perimee.
+        private const int CALENDRIER_MEMOIRE_SECONDES = 60;
+
+        private static readonly System.Collections.Concurrent.ConcurrentDictionary<string,
+            (DateTime Heure, List<Match> Matchs)> memoireCalendrier = new();
+
+        public static void OublierCalendrier()
+        {
+            memoireCalendrier.Clear();
+        }
+
+        // Tous les matchs de l'equipe, avec ce qu'il faut pour les afficher.
+        private async Task<List<Match>> MatchsDeLEquipeAsync(string teamId)
+        {
+            if (memoireCalendrier.TryGetValue(teamId, out var entree)
+                && (DateTime.UtcNow - entree.Heure).TotalSeconds < CALENDRIER_MEMOIRE_SECONDES)
+            {
+                return entree.Matchs;
+            }
+
+            var matchs = await dbContext
+                .Matches
+                .Include(i => i.Place)
+                .Include(i => i.MatchDate)
+                .ThenInclude(i => i.Calendar)
+                .ThenInclude(i => i.Competition)
+                .Include(i => i.AwayTeam)
+                .ThenInclude(i => i.Team)
+                .Include(i => i.HomeTeam)
+                .ThenInclude(i => i.Team)
+                .Where(w => w.AwayTeam.TeamId.Equals(teamId) || w.HomeTeam.TeamId.Equals(teamId))
+                .ToListAsync();
+
+            memoireCalendrier[teamId] = (DateTime.UtcNow, matchs);
+            return matchs;
+        }
+
         private readonly AppDbContext dbContext;
 
 
@@ -297,18 +342,7 @@ namespace dotnet.core.thegoldenfan.Services
 
         public async Task<PaginationModel<MatchResult>> ByTeamIdAsync(string model, bool OnlyNextMatches = false, int page = 1, int limit = 10)
         {
-            var inDb = await dbContext
-                .Matches
-                .Include(i => i.Place)
-                .Include(i => i.MatchDate)
-                .ThenInclude(i => i.Calendar)
-                .ThenInclude(i => i.Competition)
-                .Include(i => i.AwayTeam)
-                .ThenInclude(i => i.Team)
-                .Include(i => i.HomeTeam)
-                .ThenInclude(i => i.Team)
-                .Where(w => w.AwayTeam.TeamId.Equals(model) || w.HomeTeam.TeamId.Equals(model))
-                .ToListAsync();
+            var inDb = await MatchsDeLEquipeAsync(model);
             List<MatchResult> lo = MatchResult.ListFromDb(inDb);
             if (OnlyNextMatches)
             {
@@ -371,6 +405,7 @@ namespace dotnet.core.thegoldenfan.Services
             match.AwayTeam.TeamId = awayTeam.Id;
 
             await dbContext.SaveChangesAsync();
+            OublierCalendrier();
         }
 
         public async Task<string> CreateAsync(CreateMatchInput input)
@@ -395,6 +430,7 @@ namespace dotnet.core.thegoldenfan.Services
             dbContext.Matches.Add(match);
 
             await dbContext.SaveChangesAsync();
+            OublierCalendrier();
             return match.Id;
         }
 
@@ -449,6 +485,7 @@ namespace dotnet.core.thegoldenfan.Services
             }
 
             await dbContext.SaveChangesAsync();
+            OublierCalendrier();
         }
 
         // --- Entrer les résultats officiels (après le match) ---
@@ -480,6 +517,7 @@ namespace dotnet.core.thegoldenfan.Services
             match.Status = "Played";
 
             await dbContext.SaveChangesAsync();
+            OublierCalendrier();
         }
 
         public async Task<BaseMatchResult> ByIdAsync(string model, bool detailed=false)
@@ -509,19 +547,10 @@ namespace dotnet.core.thegoldenfan.Services
         {
             BaseMatchResult res = null;
             DateTime now = DateTime.UtcNow;
-            var lo = await dbContext
-                .Matches
-                .Include(i => i.Place)
-                .Include(i => i.MatchDate)
-                .ThenInclude(i => i.Calendar)
-                .ThenInclude(i => i.Competition)
-                .Include(i => i.AwayTeam)
-                .ThenInclude(i => i.Team)
-                .Include(i => i.HomeTeam)
-                .ThenInclude(i => i.Team)
-                .Where(w => w.DateTime < now && (w.AwayTeam.TeamId.Equals(teamId) || w.HomeTeam.TeamId.Equals(teamId)))
+            var lo = (await MatchsDeLEquipeAsync(teamId))
+                .Where(w => w.DateTime < now)
                 .OrderByDescending(ob => ob.DateTime)
-                .ToListAsync();
+                .ToList();
             if(lo!=null && lo.Count>0)
             {
                 var obj = lo.FirstOrDefault();
@@ -557,6 +586,7 @@ namespace dotnet.core.thegoldenfan.Services
             dbContext.TeamMatches.Remove(inDb.AwayTeam);
             dbContext.TeamMatches.Remove(inDb.HomeTeam);
             await dbContext.SaveChangesAsync();
+            OublierCalendrier();
         }
     }
 }

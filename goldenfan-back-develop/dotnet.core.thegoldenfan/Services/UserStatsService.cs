@@ -672,6 +672,10 @@ namespace dotnet.core.thegoldenfan.Services
 
             // Les notes viennent de changer : la photo precedente ne vaut plus rien.
             OublierClassements();
+
+            // Le match passe en « joue » : l'accueil doit basculer sur le suivant
+            // tout de suite, sans attendre l'expiration de la memoire courte.
+            MatchService.OublierCalendrier();
         }
 
         private UserStatsResult CreateResultModel(UserMatch model)
