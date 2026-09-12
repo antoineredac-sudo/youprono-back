@@ -53,6 +53,10 @@ using (var scope = app.Services.CreateScope())
         db.Database.ExecuteSqlRaw(
             "ALTER TABLE \"User\" ADD COLUMN IF NOT EXISTS \"LastReminderMatchId\" character varying(64);");
 
+        // Le dernier match pour lequel le courriel de resultat est parti.
+        db.Database.ExecuteSqlRaw(
+            "ALTER TABLE \"User\" ADD COLUMN IF NOT EXISTS \"LastResultMatchId\" character varying(64);");
+
         // Correction ponctuelle : quelques joueurs n'ont qu'un nom d'usage et ont
         // ete enregistres avec le meme prenom et le meme nom — « Marquinhos
         // Marquinhos », « Vitinha Vitinha ». On vide le prenom.
