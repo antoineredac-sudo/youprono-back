@@ -218,7 +218,10 @@ namespace dotnet.core.thegoldenfan.Services
         {
             public string DisplayName { get; set; } = null!;
             public double Score { get; set; }
-            public string? MatchLabel { get; set; }
+
+            // L'adversaire du match où le record a été établi. Il change tout seul
+            // le jour où quelqu'un fait mieux ailleurs.
+            public string? OpponentName { get; set; }
             public DateTime MatchDate { get; set; }
 
             // Les six axes, dans l'ordre de l'hexagone.
@@ -770,14 +773,29 @@ namespace dotnet.core.thegoldenfan.Services
             if (meilleur == null) { return null; }
 
             var membre = membres.FirstOrDefault(f => f.UserId.Equals(meilleur.UserId));
-            string domicile = meilleur.Match?.HomeTeam?.Team?.OfficialName ?? "";
-            string exterieur = meilleur.Match?.AwayTeam?.Team?.OfficialName ?? "";
+
+            // Le nom officiel est parfois vide pour une équipe créée depuis la
+            // console : on essaie les trois champs connus avant d'abandonner.
+            static string Nom(TeamMatch? côté)
+            {
+                var t = côté?.Team;
+                if (t == null) { return ""; }
+                if (!string.IsNullOrWhiteSpace(t.OfficialName)) { return t.OfficialName!; }
+                if (!string.IsNullOrWhiteSpace(t.Name)) { return t.Name; }
+                if (!string.IsNullOrWhiteSpace(t.ShortName)) { return t.ShortName!; }
+                return "";
+            }
+
+            // L'adversaire est le côté qui n'est pas celui du joueur.
+            var cotePsg = meilleur.Match?.HomeTeam;
+            bool psgRecoit = cotePsg != null && cotePsg.TeamId.Equals(meilleur.TeamId);
+            string adversaire = psgRecoit ? Nom(meilleur.Match?.AwayTeam) : Nom(meilleur.Match?.HomeTeam);
 
             return new GroupRecordResult
             {
                 DisplayName = membre != null ? (membre.User.DisplayName ?? "?") : "?",
                 Score = Math.Round(meilleur.ResultTotal.Value, 3),
-                MatchLabel = domicile + " — " + exterieur,
+                OpponentName = adversaire,
                 MatchDate = meilleur.Match != null ? meilleur.Match.DateTime : DateTime.MinValue,
                 Composition = Math.Round(meilleur.ResultTeamCompositionFormula ?? 0, 3),
                 Score6 = Math.Round(meilleur.ResultTeamScoreFormula ?? 0, 3),
