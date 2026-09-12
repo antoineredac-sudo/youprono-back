@@ -192,9 +192,27 @@ namespace dotnet.core.thegoldenfan.Services
             public List<string> Pseudos { get; set; } = new();
         }
 
-        public async Task<WelcomeResult> WelcomeAsync()
+        public async Task<WelcomeResult> WelcomeAsync(string teamId)
         {
             var result = new WelcomeResult();
+
+            DateTime maintenantParis = TimeZoneInfo.ConvertTimeFromUtc(
+                DateTime.UtcNow, GroupService.ParisTimeZoneInfo);
+
+            if (maintenantParis.Hour < RAPPEL_HEURE_DEBUT || maintenantParis.Hour >= RAPPEL_HEURE_FIN)
+            { return result; }
+
+            var prochain = await ProchainMatchOuvertAsync(teamId);
+
+            // Ceux qui ont deja pronostique sur ce match : on ne leur demande pas
+            // de faire ce qu'ils viennent de faire.
+            var dejaJoue = prochain == null
+                ? new List<Guid>()
+                : await dbContext.UserMatches
+                    .Where(w => w.MatchId.Equals(prochain.MatchId) && w.TeamId.Equals(teamId))
+                    .Select(s => s.UserId)
+                    .Distinct()
+                    .ToListAsync();
 
             // Tous ceux qui n'ont jamais recu le message. Un inscrit de la nuit
             // ou d'un jour ou la route n'a pas ete appelee n'est pas oublie.
@@ -204,7 +222,8 @@ namespace dotnet.core.thegoldenfan.Services
 
             foreach (var user in nouveaux)
             {
-                await EnvoyerBienvenueAsync(user.Email!, user.DisplayName ?? "", user.Id);
+                await EnvoyerBienvenueAsync(user.Email!, user.DisplayName ?? "", user.Id,
+                    prochain, dejaJoue.Contains(user.Id));
 
                 user.WelcomeSentAt = DateTime.UtcNow;
                 result.Envoyes++;
@@ -230,7 +249,8 @@ namespace dotnet.core.thegoldenfan.Services
             return result;
         }
 
-        private static async Task EnvoyerBienvenueAsync(string adresse, string pseudo, Guid userId)
+        private static async Task EnvoyerBienvenueAsync(string adresse, string pseudo, Guid userId,
+            ProchainMatch? prochain, bool aDejaJoue)
         {
             string cle = Environment.GetEnvironmentVariable("BREVO_API_KEY") ?? "";
             if (string.IsNullOrWhiteSpace(cle)) { return; }
@@ -241,6 +261,30 @@ namespace dotnet.core.thegoldenfan.Services
             // Le meme lien que dans les rappels : un seul interrupteur, une seule
             // facon de s'en aller.
             string lienStop = "https://youprono.fr/#stop/" + userId.ToString();
+            const string paraBloc = "<p style=\"font-size:16px;line-height:1.7;\">";
+
+            // Le prochain match, quand il y en a un d'ouvert. Le bouton pousse a
+            // jouer ; celui qui a deja pronostique est invite a relire son prono.
+            string blocProchain = "";
+            string blocProchainTexte = "";
+            if (prochain != null)
+            {
+                string aff = System.Net.WebUtility.HtmlEncode(prochain.Affiche);
+                string libelle = aDejaJoue ? "Voir mon prono" : "Faire mes pronos";
+
+                blocProchain =
+                    paraBloc + "Prochain match : <b>" + aff + "</b>. Les pronos ferment "
+                  + prochain.ClotureEnClair + ".</p>"
+                  + "<p style=\"text-align:center;margin:24px 0;\">"
+                  + "<a href=\"https://youprono.fr\" style=\"background:#da1f3d;color:#ffffff;"
+                  + "text-decoration:none;padding:14px 26px;border-radius:8px;font-weight:bold;"
+                  + "display:inline-block;\">" + libelle + "</a></p>";
+
+                blocProchainTexte =
+                    "Prochain match : " + prochain.Affiche + ". Les pronos ferment "
+                  + prochain.ClotureEnClair + ".\n"
+                  + "https://youprono.fr\n\n";
+            }
             const string para = "<p style=\"font-size:16px;line-height:1.7;\">";
 
             string corps =
@@ -259,6 +303,8 @@ namespace dotnet.core.thegoldenfan.Services
               + para + "&Agrave; toi d'anticiper jusqu'&agrave; 2 heures avant le coup d'envoi. Quelques minutes "
               + "apr&egrave;s la fin du match, tes pr&eacute;dictions sont compar&eacute;es aux stats officielles "
               + "pour te donner une note.</p>"
+
+              + blocProchain
 
               + para + "YouProno se joue entre experts du PSG et surtout entre amis. En jouant &agrave; plusieurs, "
               + "tu as une revanche &agrave; prendre tous les trois jours. D&eacute;fie tes amis et invite-les sur "
@@ -289,6 +335,7 @@ namespace dotnet.core.thegoldenfan.Services
               + "ou les ailes ? Et surtout qui va gagner ?\n\n"
               + "A toi d'anticiper jusqu'a 2 heures avant le coup d'envoi. Quelques minutes apres la fin du "
               + "match, tes predictions sont comparees aux stats officielles pour te donner une note.\n\n"
+              + blocProchainTexte
               + "YouProno se joue entre experts du PSG et surtout entre amis. En jouant a plusieurs, tu as "
               + "une revanche a prendre tous les trois jours. Defie tes amis et invite-les sur WhatsApp, ta "
               + "competition de groupe se construira automatiquement : https://youprono.fr/#groups\n\n"
@@ -339,10 +386,67 @@ namespace dotnet.core.thegoldenfan.Services
         //
         // Les textes sont d'Antoine.
 
-        // Le creneau d'envoi du rappel, heure de Paris. 8 signifie « a partir de
-        // 8 h 00 », 9 signifie « jusqu'a 8 h 59 ».
+        // Le creneau d'envoi des courriels, heure de Paris. Il vaut pour les trois :
+        // la bienvenue, le rappel du matin de match, et le lendemain de match.
+        // 8 signifie « a partir de 8 h 00 », 9 signifie « jusqu'a 8 h 59 ».
         private const int RAPPEL_HEURE_DEBUT = 8;
         private const int RAPPEL_HEURE_FIN = 9;
+
+        // Les noms francais des jours et des mois. On ne se fie pas a la culture
+        // du serveur : elle depend du conteneur, pas du jeu.
+        private static readonly string[] JOURS_FR =
+            { "dimanche", "lundi", "mardi", "mercredi", "jeudi", "vendredi", "samedi" };
+        private static readonly string[] MOIS_FR =
+            { "", "janvier", "février", "mars", "avril", "mai", "juin",
+              "juillet", "août", "septembre", "octobre", "novembre", "décembre" };
+
+        private static string DateEnClair(DateTime d)
+        {
+            return JOURS_FR[(int)d.DayOfWeek] + " " + d.Day + " " + MOIS_FR[d.Month]
+                 + " à " + d.ToString("HH'h'mm");
+        }
+
+        // Le prochain match dont les pronostics sont encore ouverts. Sert au bloc
+        // du courriel de bienvenue. Null s'il n'y en a pas.
+        public sealed class ProchainMatch
+        {
+            public string MatchId { get; set; } = "";
+            public string Affiche { get; set; } = "";
+            public string ClotureEnClair { get; set; } = "";
+        }
+
+        private async Task<ProchainMatch?> ProchainMatchOuvertAsync(string teamId)
+        {
+            DateTime maintenantParis = TimeZoneInfo.ConvertTimeFromUtc(
+                DateTime.UtcNow, GroupService.ParisTimeZoneInfo);
+
+            var matchs = await dbContext.Matches
+                .Include(i => i.HomeTeam).ThenInclude(t => t.Team)
+                .Include(i => i.AwayTeam).ThenInclude(t => t.Team)
+                .Where(w => (w.HomeTeam.TeamId.Equals(teamId) || w.AwayTeam.TeamId.Equals(teamId))
+                         && w.DateTime > maintenantParis)
+                .OrderBy(o => o.DateTime)
+                .Take(3)
+                .ToListAsync();
+
+            foreach (var m in matchs)
+            {
+                DateTime cloture = m.DateTime.AddHours(-GroupService.ClotureAvantHeures);
+                if (cloture <= maintenantParis) { continue; }
+
+                string domicile = m.HomeTeam.Team?.OfficialName ?? "";
+                string exterieur = m.AwayTeam.Team?.OfficialName ?? "";
+                bool psgRecoit = m.HomeTeam.TeamId.Equals(teamId);
+
+                return new ProchainMatch
+                {
+                    MatchId = m.Id,
+                    Affiche = (psgRecoit ? "PSG" : domicile) + " - " + (psgRecoit ? exterieur : "PSG"),
+                    ClotureEnClair = DateEnClair(cloture)
+                };
+            }
+            return null;
+        }
 
         public class ReminderResult
         {
