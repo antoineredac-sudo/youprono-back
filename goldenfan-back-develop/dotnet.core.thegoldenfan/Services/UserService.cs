@@ -247,8 +247,8 @@ namespace dotnet.core.thegoldenfan.Services
 
               + para + "Salut " + nom + ",</p>"
 
-              + para + "Tu viens de rejoindre YouProno, un terrain o&ugrave; le match se joue avant qu'il ne "
-              + "commence. Quelle compo va aligner Enrique ? Qui aura le contr&ocirc;le du jeu ? Le match "
+              + para + "Tu viens de rejoindre YouProno, un terrain de jeu o&ugrave; le match se d&eacute;roule "
+              + "plusieurs heures avant le coup d'envoi. Quelle compo va aligner Enrique ? Qui aura le contr&ocirc;le du jeu ? Le match "
               + "sera-t-il ferm&eacute; ou en mode box to box ? La rencontre sera-t-elle engag&eacute;e ? Le jeu "
               + "passera-t-il par l'axe ou les ailes ? Et surtout qui va gagner ?</p>"
 
@@ -278,8 +278,8 @@ namespace dotnet.core.thegoldenfan.Services
             // HTML est un signal de campagne : les vrais messages portent les deux.
             string texteBrut =
                 "Salut " + pseudo + ",\n\n"
-              + "Tu viens de rejoindre YouProno, un terrain ou le match se joue avant qu'il ne commence. "
-              + "Quelle compo va aligner Enrique ? Qui aura le controle du jeu ? Le match sera-t-il ferme "
+              + "Tu viens de rejoindre YouProno, un terrain de jeu ou le match se deroule plusieurs heures "
+              + "avant le coup d'envoi. Quelle compo va aligner Enrique ? Qui aura le controle du jeu ? Le match sera-t-il ferme "
               + "ou en mode box to box ? La rencontre sera-t-elle engagee ? Le jeu passera-t-il par l'axe "
               + "ou les ailes ? Et surtout qui va gagner ?\n\n"
               + "A toi d'anticiper jusqu'a 2 heures avant le coup d'envoi. Quelques minutes apres la fin du "
