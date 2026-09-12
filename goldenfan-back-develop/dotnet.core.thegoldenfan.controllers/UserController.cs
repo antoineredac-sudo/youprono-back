@@ -80,9 +80,14 @@ namespace dotnet.core.thegoldenfan.controllers
             return res;
         }
 
+        // Les trois routes d'envoi acceptent aussi HEAD : UptimeRobot interroge
+        // ainsi sur l'offre gratuite, et sans cela le serveur repondrait 405 sans
+        // jamais executer le code. Une requete HEAD declenche le meme travail,
+        // seul le corps de la reponse n'est pas renvoye.
         // Le courriel de bienvenue du soir. Appelee par UptimeRobot a 20 h,
         // heure de Paris. Le code dans l'adresse evite qu'un passant la declenche.
         [HttpGet("Welcome/{accessCode}/{teamId}")]
+        [HttpHead("Welcome/{accessCode}/{teamId}")]
         public async Task<ResponseModel<UserService.WelcomeResult>> WelcomeAsync(string accessCode, string teamId)
         {
             ResponseModel<UserService.WelcomeResult> res = ResponseModel<UserService.WelcomeResult>.CreateDefault();
@@ -104,6 +109,7 @@ namespace dotnet.core.thegoldenfan.controllers
         // Le rappel du matin d'un jour de match. Appelee par UptimeRobot a 8 h.
         // Ne fait rien si le PSG ne joue pas aujourd'hui.
         [HttpGet("Reminder/{accessCode}/{teamId}")]
+        [HttpHead("Reminder/{accessCode}/{teamId}")]
         public async Task<ResponseModel<UserService.ReminderResult>> ReminderAsync(string accessCode, string teamId)
         {
             ResponseModel<UserService.ReminderResult> res = ResponseModel<UserService.ReminderResult>.CreateDefault();
@@ -124,6 +130,7 @@ namespace dotnet.core.thegoldenfan.controllers
 
         // Le courriel du lendemain de match, meme creneau que le rappel.
         [HttpGet("ResultMail/{accessCode}/{teamId}")]
+        [HttpHead("ResultMail/{accessCode}/{teamId}")]
         public async Task<ResponseModel<UserService.ResultMailResult>> ResultMailAsync(string accessCode, string teamId)
         {
             ResponseModel<UserService.ResultMailResult> res = ResponseModel<UserService.ResultMailResult>.CreateDefault();
