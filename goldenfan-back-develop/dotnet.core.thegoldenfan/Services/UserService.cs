@@ -515,6 +515,159 @@ namespace dotnet.core.thegoldenfan.Services
             return true;
         }
 
+        // ===== LE COURRIEL DU LENDEMAIN DE MATCH =====
+        // Envoye entre 8 h et 9 h, le meme creneau que le rappel, au lendemain
+        // d'un match note. Il ne part qu'a ceux qui ont pronostique : les autres
+        // n'ont pas de note a decouvrir.
+        //
+        // On ne se cale pas sur la date du match mais sur le fait qu'il soit note
+        // et qu'aucun courriel ne soit encore parti pour lui. Si la saisie des
+        // statistiques a lieu tard, le message part le lendemain matin suivant
+        // plutot que jamais.
+        //
+        // Le texte est d'Antoine.
+
+        public class ResultMailResult
+        {
+            public string? MatchId { get; set; }
+            public string? Affiche { get; set; }
+            public int Envoyes { get; set; }
+        }
+
+        public async Task<ResultMailResult> ResultMailAsync(string teamId)
+        {
+            var result = new ResultMailResult();
+
+            DateTime maintenantParis = TimeZoneInfo.ConvertTimeFromUtc(
+                DateTime.UtcNow, GroupService.ParisTimeZoneInfo);
+
+            if (maintenantParis.Hour < RAPPEL_HEURE_DEBUT || maintenantParis.Hour >= RAPPEL_HEURE_FIN)
+            { return result; }
+
+            // Le dernier match note de l'equipe.
+            var dernier = await dbContext.UserMatches
+                .Where(w => w.TeamId.Equals(teamId) && w.ResultTotal.HasValue)
+                .Include(i => i.Match).ThenInclude(m => m.HomeTeam).ThenInclude(t => t.Team)
+                .Include(i => i.Match).ThenInclude(m => m.AwayTeam).ThenInclude(t => t.Team)
+                .OrderByDescending(o => o.Match.DateTime)
+                .FirstOrDefaultAsync();
+
+            if (dernier == null) { return result; }
+
+            var match = dernier.Match;
+            result.MatchId = match.Id;
+
+            string domicile = match.HomeTeam.Team?.OfficialName ?? "";
+            string exterieur = match.AwayTeam.Team?.OfficialName ?? "";
+            bool psgRecoit = match.HomeTeam.TeamId.Equals(teamId);
+            result.Affiche = (psgRecoit ? "PSG" : domicile) + " - " + (psgRecoit ? exterieur : "PSG");
+
+            // Les notes de ce match, joueur par joueur.
+            var notes = await dbContext.UserMatches
+                .Where(w => w.MatchId.Equals(match.Id) && w.TeamId.Equals(teamId) && w.ResultTotal.HasValue)
+                .Select(s => new { s.UserId, Note = s.ResultTotal.Value })
+                .ToListAsync();
+
+            var ids = notes.Select(s => s.UserId).ToList();
+
+            var destinataires = await dbContext.Users
+                .Where(w => ids.Contains(w.Id) && w.EmailOptIn && w.Email != null && w.Email != ""
+                         && (w.LastResultMatchId == null || w.LastResultMatchId != match.Id))
+                .ToListAsync();
+
+            foreach (var user in destinataires)
+            {
+                double note = notes.Where(w => w.UserId.Equals(user.Id)).Select(s => s.Note).FirstOrDefault();
+
+                await EnvoyerResultatAsync(user.Email!, user.DisplayName ?? "", user.Id,
+                    result.Affiche, note);
+
+                user.LastResultMatchId = match.Id;
+                result.Envoyes++;
+
+                if (result.Envoyes < destinataires.Count) { await Task.Delay(3000); }
+            }
+
+            if (result.Envoyes > 0) { await dbContext.SaveChangesAsync(); }
+            return result;
+        }
+
+        private static async Task EnvoyerResultatAsync(string adresse, string pseudo, Guid userId,
+            string affiche, double note)
+        {
+            string cle = Environment.GetEnvironmentVariable("BREVO_API_KEY") ?? "";
+            if (string.IsNullOrWhiteSpace(cle)) { return; }
+
+            string expediteur = Environment.GetEnvironmentVariable("MAIL_FROM") ?? "contact@youprono.fr";
+            string nom = System.Net.WebUtility.HtmlEncode(pseudo);
+            string aff = System.Net.WebUtility.HtmlEncode(affiche);
+            string lienStop = "https://youprono.fr/#stop/" + userId.ToString();
+            string noteTexte = note.ToString("0.000", System.Globalization.CultureInfo.GetCultureInfo("fr-FR"));
+            const string para = "<p style=\"font-size:16px;line-height:1.7;\">";
+
+            string corps =
+                "<div style=\"font-family:Arial,sans-serif;background:#0b2265;padding:28px;color:#ffffff;\">"
+              + "<div style=\"max-width:520px;margin:0 auto;background:#14306f;border:1px solid #26478e;"
+              + "border-radius:12px;padding:26px;\">"
+              + "<div style=\"color:#e8b923;font-size:22px;font-weight:bold;margin-bottom:18px;\">YouProno</div>"
+
+              + para + "Salut " + nom + ",</p>"
+
+              + para + "Hier tu as obtenu la note de <b style=\"color:#e8b923;\">" + noteTexte
+              + "</b> sur le match " + aff + ". D&eacute;couvre ta nouvelle position aux classements "
+              + "et le prochain match qui est d&eacute;j&agrave; ouvert aux pronos.</p>"
+
+              + "<p style=\"text-align:center;margin:24px 0;\">"
+              + "<a href=\"https://youprono.fr\" style=\"background:#da1f3d;color:#ffffff;"
+              + "text-decoration:none;padding:14px 26px;border-radius:8px;font-weight:bold;"
+              + "display:inline-block;\">Voir mon r&eacute;sultat</a></p>"
+
+              + para + "Allez Paris</p>"
+              + "<p style=\"font-size:16px;line-height:1.7;margin-top:22px;\">@lepsgdantoine</p>"
+
+              + "<p style=\"font-size:12px;color:#9fb0d8;line-height:1.6;margin-top:26px;"
+              + "border-top:1px solid #26478e;padding-top:14px;\">"
+              + "<a href=\"" + lienStop + "\" style=\"color:#9fb0d8;\">Ne plus recevoir de rappel "
+              + "avant match</a></p>"
+              + "</div></div>";
+
+            string texteBrut =
+                "Salut " + pseudo + ",\n\n"
+              + "Hier tu as obtenu la note de " + noteTexte + " sur le match " + affiche
+              + ". Decouvre ta nouvelle position aux classements et le prochain match qui est deja "
+              + "ouvert aux pronos.\n\n"
+              + "https://youprono.fr\n\n"
+              + "Allez Paris\n\n"
+              + "@lepsgdantoine\n\n"
+              + "---\n"
+              + "Ne plus recevoir de rappel avant match : " + lienStop;
+
+            var charge = new
+            {
+                sender = new { name = "YouProno", email = expediteur },
+                to = new[] { new { email = adresse } },
+                replyTo = new { email = expediteur, name = "YouProno" },
+                subject = "Ta note sur " + affiche,
+                htmlContent = corps,
+                textContent = texteBrut,
+                headers = new Dictionary<string, string>
+                {
+                    { "List-Unsubscribe", "<" + lienStop + ">" },
+                    { "List-Unsubscribe-Post", "List-Unsubscribe=One-Click" }
+                }
+            };
+
+            try
+            {
+                using var req = new HttpRequestMessage(HttpMethod.Post, "https://api.brevo.com/v3/smtp/email");
+                req.Headers.Add("api-key", cle);
+                req.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+                req.Content = new StringContent(JsonSerializer.Serialize(charge), Encoding.UTF8, "application/json");
+                await http.SendAsync(req);
+            }
+            catch { }
+        }
+
         // ===== MOT DE PASSE OU PSEUDO OUBLIE =====
         // Le joueur donne son adresse. On lui renvoie son pseudo ET un lien de
         // reinitialisation valable une heure. La reponse est toujours la meme,
