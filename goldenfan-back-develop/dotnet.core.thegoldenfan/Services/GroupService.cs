@@ -208,6 +208,26 @@ namespace dotnet.core.thegoldenfan.Services
             public int CycleNumber { get; set; }
             public string? ChampionName { get; set; } = null;
             public List<GroupMemberRankingResult> Ranking { get; set; } = new();
+
+            // La meilleure note jamais obtenue par un membre du groupe, avec la
+            // forme de ce match-là. Null tant que personne n'a de note.
+            public GroupRecordResult? Record { get; set; }
+        }
+
+        public class GroupRecordResult
+        {
+            public string DisplayName { get; set; } = null!;
+            public double Score { get; set; }
+            public string? MatchLabel { get; set; }
+            public DateTime MatchDate { get; set; }
+
+            // Les six axes, dans l'ordre de l'hexagone.
+            public double Composition { get; set; }
+            public double Score6 { get; set; }
+            public double Possession { get; set; }
+            public double Shots { get; set; }
+            public double Fouls { get; set; }
+            public double Crosses { get; set; }
         }
 
         // Un match est "joué" dès lors que son statut n'est plus "Fixture" (match à venir).
@@ -729,7 +749,42 @@ namespace dotnet.core.thegoldenfan.Services
                 SeasonLength = SeasonLength,
                 CycleNumber = cycleIndex + 1,
                 ChampionName = championName,
-                Ranking = ranking
+                Ranking = ranking,
+                Record = await RecordDuGroupeAsync(memberIds, group.Members)
+            };
+        }
+
+        // Le record du groupe : la meilleure note d'un match, tous membres et tous
+        // matchs confondus. Elle ne dépend pas du cycle en cours — un record n'a
+        // pas de date de péremption.
+        private async Task<GroupRecordResult?> RecordDuGroupeAsync(
+            List<Guid> memberIds, ICollection<GroupMember> membres)
+        {
+            var meilleur = await dbContext.UserMatches
+                .Where(w => memberIds.Contains(w.UserId) && w.ResultTotal.HasValue)
+                .Include(i => i.Match).ThenInclude(m => m.HomeTeam).ThenInclude(t => t.Team)
+                .Include(i => i.Match).ThenInclude(m => m.AwayTeam).ThenInclude(t => t.Team)
+                .OrderByDescending(o => o.ResultTotal.Value)
+                .FirstOrDefaultAsync();
+
+            if (meilleur == null) { return null; }
+
+            var membre = membres.FirstOrDefault(f => f.UserId.Equals(meilleur.UserId));
+            string domicile = meilleur.Match?.HomeTeam?.Team?.OfficialName ?? "";
+            string exterieur = meilleur.Match?.AwayTeam?.Team?.OfficialName ?? "";
+
+            return new GroupRecordResult
+            {
+                DisplayName = membre != null ? (membre.User.DisplayName ?? "?") : "?",
+                Score = Math.Round(meilleur.ResultTotal.Value, 3),
+                MatchLabel = domicile + " — " + exterieur,
+                MatchDate = meilleur.Match != null ? meilleur.Match.DateTime : DateTime.MinValue,
+                Composition = Math.Round(meilleur.ResultTeamCompositionFormula ?? 0, 3),
+                Score6 = Math.Round(meilleur.ResultTeamScoreFormula ?? 0, 3),
+                Possession = Math.Round(meilleur.ResultTeamPossessionFormula ?? 0, 3),
+                Shots = Math.Round(meilleur.ResultTeamShotsFormula ?? 0, 3),
+                Fouls = Math.Round(meilleur.ResultTeamFoulsFormula ?? 0, 3),
+                Crosses = Math.Round(meilleur.ResultTeamCrossesFormula ?? 0, 3)
             };
         }
 
