@@ -36,6 +36,9 @@ public partial class User
     // recoive deux fois le meme rappel si la route est appelee plusieurs fois.
     public string? LastReminderMatchId { get; set; }
 
+    // Le dernier match pour lequel le courriel de resultat est parti.
+    public string? LastResultMatchId { get; set; }
+
     public virtual ICollection<Follower> FollowerFollowerNavigations { get; } = new List<Follower>();
 
     public virtual ICollection<Follower> FollowerUsers { get; } = new List<Follower>();
