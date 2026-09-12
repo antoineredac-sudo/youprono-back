@@ -298,7 +298,7 @@ namespace dotnet.core.thegoldenfan.Services
         private const int CALENDRIER_MEMOIRE_SECONDES = 60;
 
         private static readonly System.Collections.Concurrent.ConcurrentDictionary<string,
-            (DateTime Heure, List<Match> Matchs)> memoireCalendrier = new();
+            (DateTime Heure, List<Dbs.Match> Matchs)> memoireCalendrier = new();
 
         public static void OublierCalendrier()
         {
@@ -306,7 +306,9 @@ namespace dotnet.core.thegoldenfan.Services
         }
 
         // Tous les matchs de l'equipe, avec ce qu'il faut pour les afficher.
-        private async Task<List<Match>> MatchsDeLEquipeAsync(string teamId)
+        // Dbs.Match et non Match : System.Text.RegularExpressions, importé plus
+        // haut, définit lui aussi un type Match. Tout le fichier qualifie.
+        private async Task<List<Dbs.Match>> MatchsDeLEquipeAsync(string teamId)
         {
             if (memoireCalendrier.TryGetValue(teamId, out var entree)
                 && (DateTime.UtcNow - entree.Heure).TotalSeconds < CALENDRIER_MEMOIRE_SECONDES)
