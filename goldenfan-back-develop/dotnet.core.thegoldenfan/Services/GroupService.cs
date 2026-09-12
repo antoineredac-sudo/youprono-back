@@ -195,6 +195,11 @@ namespace dotnet.core.thegoldenfan.Services
             public string Name { get; set; } = null!;
             public string InviteCode { get; set; } = null!;
             public string Type { get; set; } = TypeAmis;
+
+            // Le site s'en sert pour n'offrir le renommage qu'à celui qui a créé
+            // le groupe. La vérification est refaite côté serveur : un identifiant
+            // dans l'adresse ne prouve rien.
+            public Guid CreatorId { get; set; }
             public DateTime CreatedDate { get; set; }
             public bool IsSeasonComplete { get; set; }
             public int MatchesCounted { get; set; }
@@ -716,6 +721,7 @@ namespace dotnet.core.thegoldenfan.Services
                 Name = group.Name,
                 InviteCode = group.InviteCode,
                 Type = group.Type,
+                CreatorId = group.CreatorId,
                 CreatedDate = group.CreatedDate,
                 IsSeasonComplete = isComplete,
                 MatchesCounted = cycleMatches.Count,
@@ -1876,6 +1882,35 @@ namespace dotnet.core.thegoldenfan.Services
             }
 
             return result;
+        }
+
+        // --- Renommer un groupe ---
+        // Seul celui qui l'a créé peut le faire. Le nom est le seul champ qui
+        // change : ni le code d'invitation, ni les membres, ni le cycle en cours.
+        public class RenameModel
+        {
+            public string Name { get; set; } = null!;
+        }
+
+        public async Task<bool> RenameAsync(Guid groupId, Guid userId, RenameModel model)
+        {
+            string src = "GroupService.RenameAsync";
+            if (model == null || StringHelper.IsNull(model.Name))
+            { throw BaseException.InvalidModel(-1, src); }
+
+            string nom = model.Name.Trim();
+            if (nom.Length < 2 || nom.Length > 30)
+            { throw BaseException.InvalidModel(-2, src); }
+
+            var group = await dbContext.Groups.FirstOrDefaultAsync(w => w.Id.Equals(groupId));
+            if (group == null) { throw BaseException.NotFound(-3, src); }
+
+            // La vérification qui compte : celle du serveur.
+            if (!group.CreatorId.Equals(userId)) { throw BaseException.NotFound(-4, src); }
+
+            group.Name = nom;
+            await dbContext.SaveChangesAsync();
+            return true;
         }
 
         // --- Ce que designe un code d'invitation ---
