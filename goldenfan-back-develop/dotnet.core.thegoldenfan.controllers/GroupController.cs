@@ -67,6 +67,24 @@ namespace dotnet.core.thegoldenfan.controllers
             return res;
         }
 
+        // Renommer un groupe. Seul son créateur y parvient : le serveur le vérifie.
+        [HttpPost("Rename/{groupId}/{userId}")]
+        public async Task<ResponseModel<bool>> RenameAsync(Guid groupId, Guid userId,
+            [FromBody] GroupService.RenameModel model)
+        {
+            ResponseModel<bool> res = ResponseModel<bool>.CreateDefault();
+            try
+            {
+                var result = await service.RenameAsync(groupId, userId, model);
+                res = new ResponseModel<bool>(0, result);
+            }
+            catch (Exception ex)
+            {
+                res = ResponseModel<bool>.Exception(ex);
+            }
+            return res;
+        }
+
         [HttpGet("ById/{groupId}")]
         public async Task<ResponseModel<GroupDetailsResult>> ByIdAsync(Guid groupId)
         {
