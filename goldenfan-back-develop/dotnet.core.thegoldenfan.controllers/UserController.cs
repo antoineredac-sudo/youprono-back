@@ -101,6 +101,44 @@ namespace dotnet.core.thegoldenfan.controllers
             return res;
         }
 
+        // Le rappel du matin d'un jour de match. Appelee par UptimeRobot a 8 h.
+        // Ne fait rien si le PSG ne joue pas aujourd'hui.
+        [HttpGet("Reminder/{accessCode}/{teamId}")]
+        public async Task<ResponseModel<UserService.ReminderResult>> ReminderAsync(string accessCode, string teamId)
+        {
+            ResponseModel<UserService.ReminderResult> res = ResponseModel<UserService.ReminderResult>.CreateDefault();
+            try
+            {
+                if (!string.Equals(accessCode, "psg2026", StringComparison.Ordinal))
+                { return ResponseModel<UserService.ReminderResult>.CreateDefault(); }
+
+                var result = await service.ReminderAsync(teamId);
+                res = new ResponseModel<UserService.ReminderResult>(0, result);
+            }
+            catch (Exception ex)
+            {
+                res = ResponseModel<UserService.ReminderResult>.Exception(ex);
+            }
+            return res;
+        }
+
+        // Le lien de desabonnement du pied de page des rappels.
+        [HttpPost("Unsubscribe/{userId}")]
+        public async Task<ResponseModel<bool>> UnsubscribeAsync(Guid userId)
+        {
+            ResponseModel<bool> res = ResponseModel<bool>.CreateDefault();
+            try
+            {
+                var result = await service.UnsubscribeAsync(userId);
+                res = new ResponseModel<bool>(0, result);
+            }
+            catch (Exception ex)
+            {
+                res = ResponseModel<bool>.Exception(ex);
+            }
+            return res;
+        }
+
         // Mot de passe ou pseudo oublie : on envoie le pseudo et un lien.
         [HttpPost("Forgot")]
         public async Task<ResponseModel<bool>> ForgotAsync([FromBody] UserService.ForgotModel model)
