@@ -339,6 +339,11 @@ namespace dotnet.core.thegoldenfan.Services
         //
         // Les textes sont d'Antoine.
 
+        // Le creneau d'envoi du rappel, heure de Paris. 8 signifie « a partir de
+        // 8 h 00 », 9 signifie « jusqu'a 8 h 59 ».
+        private const int RAPPEL_HEURE_DEBUT = 8;
+        private const int RAPPEL_HEURE_FIN = 9;
+
         public class ReminderResult
         {
             public string? MatchId { get; set; }
@@ -366,6 +371,12 @@ namespace dotnet.core.thegoldenfan.Services
                 .FirstOrDefaultAsync();
 
             if (match == null) { return result; }
+
+            // Le garde-fou horaire. UptimeRobot appelle la route en continu, sans
+            // savoir quelle heure il est : c'est ici qu'on decide. Rien ne part en
+            // dehors du creneau, donc aucun rappel a trois heures du matin.
+            if (maintenantParis.Hour < RAPPEL_HEURE_DEBUT || maintenantParis.Hour >= RAPPEL_HEURE_FIN)
+            { return result; }
 
             DateTime cloture = match.DateTime.AddHours(-GroupService.ClotureAvantHeures);
             if (maintenantParis >= cloture) { return result; }
