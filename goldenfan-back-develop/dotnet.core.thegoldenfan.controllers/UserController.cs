@@ -122,6 +122,26 @@ namespace dotnet.core.thegoldenfan.controllers
             return res;
         }
 
+        // Le courriel du lendemain de match, meme creneau que le rappel.
+        [HttpGet("ResultMail/{accessCode}/{teamId}")]
+        public async Task<ResponseModel<UserService.ResultMailResult>> ResultMailAsync(string accessCode, string teamId)
+        {
+            ResponseModel<UserService.ResultMailResult> res = ResponseModel<UserService.ResultMailResult>.CreateDefault();
+            try
+            {
+                if (!string.Equals(accessCode, "psg2026", StringComparison.Ordinal))
+                { return ResponseModel<UserService.ResultMailResult>.CreateDefault(); }
+
+                var result = await service.ResultMailAsync(teamId);
+                res = new ResponseModel<UserService.ResultMailResult>(0, result);
+            }
+            catch (Exception ex)
+            {
+                res = ResponseModel<UserService.ResultMailResult>.Exception(ex);
+            }
+            return res;
+        }
+
         // Le lien de desabonnement du pied de page des rappels.
         [HttpPost("Unsubscribe/{userId}")]
         public async Task<ResponseModel<bool>> UnsubscribeAsync(Guid userId)
