@@ -452,6 +452,7 @@ public partial class AppDbContext : DbContext
             entity.Property(e => e.ResetToken).HasMaxLength(64);
             entity.Property(e => e.ResetTokenExpires);
             entity.Property(e => e.WelcomeSentAt);
+            entity.Property(e => e.LastReminderMatchId).HasMaxLength(64);
         });
 
         modelBuilder.Entity<UserMatch>(entity =>
