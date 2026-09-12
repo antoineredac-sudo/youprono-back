@@ -1518,6 +1518,26 @@ namespace dotnet.core.thegoldenfan.Services
             public bool IsMe { get; set; }
         }
 
+        // Les six memes axes que l'ecran « Dernier resultat », dans le meme ordre.
+        public class KopHexaSixResult
+        {
+            public double Composition { get; set; }
+            public double Score { get; set; }
+            public double Possession { get; set; }
+            public double Shots { get; set; }
+            public double Fouls { get; set; }
+            public double Crosses { get; set; }
+        }
+
+        public class KopHexaResult
+        {
+            public KopHexaSixResult Me { get; set; } = new();
+            public KopHexaSixResult Kop { get; set; } = new();
+            public double MyTotal { get; set; }
+            public double KopTotal { get; set; }
+            public int ScoredCount { get; set; }
+        }
+
         public class KopRankRowResult
         {
             public Guid UserId { get; set; }
@@ -1527,6 +1547,9 @@ namespace dotnet.core.thegoldenfan.Services
             public int GeneralRank { get; set; }
             public int MatchesPlayed { get; set; }
             public bool IsMe { get; set; }
+
+            // Le rang dans le kop avant le dernier match note. 0 = rien a montrer.
+            public int RankBefore { get; set; }
         }
 
         public class KopResult
@@ -1558,6 +1581,11 @@ namespace dotnet.core.thegoldenfan.Services
             public List<KopPlayerResult> OfficialEleven { get; set; } = new();
 
             public List<KopMatchRowResult> LastMatch { get; set; } = new();
+
+            // Les six notes de categorie du dernier match note : celles du joueur et
+            // la moyenne du kop. C'est ce que l'hexagone compare. Null s'il n'y a
+            // rien a comparer — pas de note, ou personne d'autre dans le kop.
+            public KopHexaResult? Hexa { get; set; }
             public List<KopRankRowResult> Ranking { get; set; } = new();
         }
 
@@ -1615,6 +1643,37 @@ namespace dotnet.core.thegoldenfan.Services
                 .ToList();
 
             for (int i = 0; i < result.Ranking.Count; i++) { result.Ranking[i].Rank = i + 1; }
+
+            // Le mouvement depuis le dernier match note : on rejoue le classement du
+            // kop en retirant ce match, et on compare les deux ordres. Meme methode
+            // que le classement general.
+            var dernierNote = await dbContext.UserMatches
+                .Where(w => w.TeamId.Equals(teamId) && w.ResultTotal.HasValue)
+                .Include(i => i.Match)
+                .OrderByDescending(o => o.Match.DateTime)
+                .Select(s => s.MatchId)
+                .FirstOrDefaultAsync();
+
+            if (!string.IsNullOrEmpty(dernierNote))
+            {
+                var coefsAvant = await userService.ExpertCoefAllAsync(teamId, dernierNote);
+                var ordreAvant = group.Members
+                    .Select(m => new
+                    {
+                        m.UserId,
+                        Coef = coefsAvant.ContainsKey(m.UserId) ? coefsAvant[m.UserId] : 0
+                    })
+                    .Where(w => w.Coef > 0)
+                    .OrderByDescending(o => o.Coef)
+                    .Select(s => s.UserId)
+                    .ToList();
+
+                foreach (var ligne in result.Ranking)
+                {
+                    int pos = ordreAvant.IndexOf(ligne.UserId);
+                    ligne.RankBefore = pos >= 0 ? pos + 1 : 0;
+                }
+            }
 
             // --- Le match de reference : le dernier dont les pronostics sont fermes ---
             DateTime now = DateTime.UtcNow;
@@ -1707,6 +1766,13 @@ namespace dotnet.core.thegoldenfan.Services
                     })
                     .ToList();
 
+                // Le terrain colore le onze d'Enrique selon ce que le kop avait choisi :
+                // chaque titulaire officiel porte donc son propre decompte.
+                foreach (var officiel in result.OfficialEleven)
+                {
+                    officiel.ChoiceCount = choix.ContainsKey(officiel.Id) ? choix[officiel.Id] : 0;
+                }
+
                 prono.TeamPossession = Math.Round(predictions.Average(a => a.PreTeamPossession), 1);
                 prono.OpponentPossession = Math.Round(predictions.Average(a => a.PreOpponentPossession), 1);
                 prono.TeamShots = Math.Round(predictions.Average(a => (double)a.PreTeamShots), 1);
@@ -1767,6 +1833,45 @@ namespace dotnet.core.thegoldenfan.Services
                         Rank = i + 1,
                         IsMe = userId.HasValue && notes[i].UserId.Equals(userId.Value)
                     });
+                }
+
+                // --- Les six axes de l'hexagone ---
+                var mien = userId.HasValue
+                    ? notes.FirstOrDefault(f => f.UserId.Equals(userId.Value))
+                    : null;
+
+                if (mien != null && notes.Count > 0)
+                {
+                    static double Moy(List<UserMatch> l, Func<UserMatch, double?> champ)
+                    {
+                        var v = l.Select(champ).Where(w => w.HasValue).Select(s => s.Value).ToList();
+                        return v.Count > 0 ? Math.Round(v.Average(), 3) : 0;
+                    }
+
+                    result.Hexa = new KopHexaResult
+                    {
+                        ScoredCount = notes.Count,
+                        MyTotal = Math.Round(mien.ResultTotal.Value, 3),
+                        KopTotal = Math.Round(notes.Average(a => a.ResultTotal.Value), 3),
+                        Me = new KopHexaSixResult
+                        {
+                            Composition = Math.Round(mien.ResultTeamCompositionFormula ?? 0, 3),
+                            Score = Math.Round(mien.ResultTeamScoreFormula ?? 0, 3),
+                            Possession = Math.Round(mien.ResultTeamPossessionFormula ?? 0, 3),
+                            Shots = Math.Round(mien.ResultTeamShotsFormula ?? 0, 3),
+                            Fouls = Math.Round(mien.ResultTeamFoulsFormula ?? 0, 3),
+                            Crosses = Math.Round(mien.ResultTeamCrossesFormula ?? 0, 3)
+                        },
+                        Kop = new KopHexaSixResult
+                        {
+                            Composition = Moy(notes, n => n.ResultTeamCompositionFormula),
+                            Score = Moy(notes, n => n.ResultTeamScoreFormula),
+                            Possession = Moy(notes, n => n.ResultTeamPossessionFormula),
+                            Shots = Moy(notes, n => n.ResultTeamShotsFormula),
+                            Fouls = Moy(notes, n => n.ResultTeamFoulsFormula),
+                            Crosses = Moy(notes, n => n.ResultTeamCrossesFormula)
+                        }
+                    };
                 }
             }
 
