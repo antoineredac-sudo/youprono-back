@@ -204,7 +204,7 @@ namespace dotnet.core.thegoldenfan.Services
 
             foreach (var user in nouveaux)
             {
-                await EnvoyerBienvenueAsync(user.Email!, user.DisplayName ?? "");
+                await EnvoyerBienvenueAsync(user.Email!, user.DisplayName ?? "", user.Id);
 
                 user.WelcomeSentAt = DateTime.UtcNow;
                 result.Envoyes++;
@@ -230,13 +230,17 @@ namespace dotnet.core.thegoldenfan.Services
             return result;
         }
 
-        private static async Task EnvoyerBienvenueAsync(string adresse, string pseudo)
+        private static async Task EnvoyerBienvenueAsync(string adresse, string pseudo, Guid userId)
         {
             string cle = Environment.GetEnvironmentVariable("BREVO_API_KEY") ?? "";
             if (string.IsNullOrWhiteSpace(cle)) { return; }
 
             string expediteur = Environment.GetEnvironmentVariable("MAIL_FROM") ?? "contact@youprono.fr";
             string nom = System.Net.WebUtility.HtmlEncode(pseudo);
+
+            // Le meme lien que dans les rappels : un seul interrupteur, une seule
+            // facon de s'en aller.
+            string lienStop = "https://youprono.fr/#stop/" + userId.ToString();
             const string para = "<p style=\"font-size:16px;line-height:1.7;\">";
 
             string corps =
@@ -267,11 +271,12 @@ namespace dotnet.core.thegoldenfan.Services
               + "display:inline-block;\">D&eacute;fie tes amis</a></p>"
 
               + para + "Allez Paris</p>"
-              + "<p style=\"font-size:16px;line-height:1.7;margin-top:22px;\">Antoine</p>"
+              + "<p style=\"font-size:16px;line-height:1.7;margin-top:22px;\">@lepsgdantoine</p>"
 
               + "<p style=\"font-size:12px;color:#9fb0d8;line-height:1.6;margin-top:26px;"
               + "border-top:1px solid #26478e;padding-top:14px;\">"
-              + "R&eacute;ponds STOP pour ne plus recevoir de message.</p>"
+              + "<a href=\"" + lienStop + "\" style=\"color:#9fb0d8;\">Ne plus recevoir de rappel "
+              + "avant match</a></p>"
               + "</div></div>";
 
             // La version texte du meme message. Un courriel qui n'existe qu'en
@@ -289,9 +294,9 @@ namespace dotnet.core.thegoldenfan.Services
               + "competition de groupe se construira automatiquement : https://youprono.fr/#groups\n\n"
               + "YouProno est un jeu gratuit et sans publicite realise par des passionnes.\n\n"
               + "Allez Paris\n\n"
-              + "Antoine\n\n"
+              + "@lepsgdantoine\n\n"
               + "---\n"
-              + "Reponds STOP pour ne plus recevoir de message.";
+              + "Ne plus recevoir de rappel avant match : " + lienStop;
 
             var charge = new
             {
@@ -305,7 +310,7 @@ namespace dotnet.core.thegoldenfan.Services
                 // Son absence suffit a faire classer le message en indesirables.
                 headers = new Dictionary<string, string>
                 {
-                    { "List-Unsubscribe", "<mailto:" + expediteur + "?subject=STOP>" },
+                    { "List-Unsubscribe", "<" + lienStop + ">" },
                     { "List-Unsubscribe-Post", "List-Unsubscribe=One-Click" }
                 }
             };
@@ -322,6 +327,181 @@ namespace dotnet.core.thegoldenfan.Services
             {
                 // Un envoi qui echoue ne bloque pas les suivants.
             }
+        }
+
+        // ===== LE RAPPEL AVANT MATCH =====
+        // Envoye le matin d'un jour de match, a 8 h, par un appel d'UptimeRobot.
+        // Deux textes : celui qui n'a pas encore pronostique, et celui qui l'a
+        // deja fait — a qui on ne dit pas « fais tes predictions ».
+        //
+        // Ne part qu'a ceux qui ont coche « previens-moi », et une seule fois par
+        // match : LastReminderMatchId garde la trace.
+        //
+        // Les textes sont d'Antoine.
+
+        public class ReminderResult
+        {
+            public string? MatchId { get; set; }
+            public string? Affiche { get; set; }
+            public int Envoyes { get; set; }
+            public int DejaJoue { get; set; }
+            public int Ignores { get; set; }
+        }
+
+        public async Task<ReminderResult> ReminderAsync(string teamId)
+        {
+            var result = new ReminderResult();
+
+            // Le prochain match de l'equipe. On ne fait rien s'il n'a pas lieu
+            // aujourd'hui, heure de Paris, ou si sa cloture est deja passee.
+            DateTime maintenantParis = TimeZoneInfo.ConvertTimeFromUtc(
+                DateTime.UtcNow, GroupService.ParisTimeZoneInfo);
+
+            var match = await dbContext.Matches
+                .Include(i => i.HomeTeam).ThenInclude(t => t.Team)
+                .Include(i => i.AwayTeam).ThenInclude(t => t.Team)
+                .Where(w => (w.HomeTeam.TeamId.Equals(teamId) || w.AwayTeam.TeamId.Equals(teamId))
+                         && w.DateTime.Date == maintenantParis.Date)
+                .OrderBy(o => o.DateTime)
+                .FirstOrDefaultAsync();
+
+            if (match == null) { return result; }
+
+            DateTime cloture = match.DateTime.AddHours(-GroupService.ClotureAvantHeures);
+            if (maintenantParis >= cloture) { return result; }
+
+            result.MatchId = match.Id;
+            string domicile = match.HomeTeam.Team?.OfficialName ?? "";
+            string exterieur = match.AwayTeam.Team?.OfficialName ?? "";
+
+            bool psgRecoit = match.HomeTeam.TeamId.Equals(teamId);
+            string adversaire = psgRecoit ? exterieur : domicile;
+
+            // L'affiche cite toujours l'equipe qui recoit en premier, comme partout
+            // ailleurs dans le football. Le PSG s'abrege dans l'objet du message.
+            result.Affiche = (psgRecoit ? "PSG" : domicile) + " - " + (psgRecoit ? exterieur : "PSG");
+
+            string heureMatch = match.DateTime.ToString("HH'h'mm");
+            string heureCloture = cloture.ToString("HH'h'mm");
+
+            // Qui a deja pronostique sur ce match.
+            var ontJoue = await dbContext.UserMatches
+                .Where(w => w.MatchId.Equals(match.Id) && w.TeamId.Equals(teamId))
+                .Select(s => s.UserId)
+                .Distinct()
+                .ToListAsync();
+
+            var destinataires = await dbContext.Users
+                .Where(w => w.EmailOptIn && w.Email != null && w.Email != ""
+                         && (w.LastReminderMatchId == null || w.LastReminderMatchId != match.Id))
+                .ToListAsync();
+
+            foreach (var user in destinataires)
+            {
+                bool aDejaJoue = ontJoue.Contains(user.Id);
+
+                await EnvoyerRappelAsync(user.Email!, user.DisplayName ?? "", user.Id,
+                    adversaire, result.Affiche, heureMatch, heureCloture, aDejaJoue);
+
+                user.LastReminderMatchId = match.Id;
+                result.Envoyes++;
+                if (aDejaJoue) { result.DejaJoue++; }
+
+                // Espacer les envois : une salve identique ressemble a une campagne.
+                if (result.Envoyes < destinataires.Count) { await Task.Delay(3000); }
+            }
+
+            if (result.Envoyes > 0) { await dbContext.SaveChangesAsync(); }
+            return result;
+        }
+
+        private static async Task EnvoyerRappelAsync(string adresse, string pseudo, Guid userId,
+            string adversaire, string affiche, string heureMatch, string heureCloture, bool aDejaJoue)
+        {
+            string cle = Environment.GetEnvironmentVariable("BREVO_API_KEY") ?? "";
+            if (string.IsNullOrWhiteSpace(cle)) { return; }
+
+            string expediteur = Environment.GetEnvironmentVariable("MAIL_FROM") ?? "contact@youprono.fr";
+            string nom = System.Net.WebUtility.HtmlEncode(pseudo);
+            string adv = System.Net.WebUtility.HtmlEncode(adversaire);
+            string lienStop = "https://youprono.fr/#stop/" + userId.ToString();
+            const string para = "<p style=\"font-size:16px;line-height:1.7;\">";
+
+            // « faire et modifier » pour celui qui n'a rien fait, « modifier »
+            // seulement pour celui qui a deja pronostique.
+            string verbe = aDejaJoue ? "modifier" : "faire et modifier";
+
+            string corps =
+                "<div style=\"font-family:Arial,sans-serif;background:#0b2265;padding:28px;color:#ffffff;\">"
+              + "<div style=\"max-width:520px;margin:0 auto;background:#14306f;border:1px solid #26478e;"
+              + "border-radius:12px;padding:26px;\">"
+              + "<div style=\"color:#e8b923;font-size:22px;font-weight:bold;margin-bottom:18px;\">YouProno</div>"
+
+              + para + "Salut " + nom + ",</p>"
+
+              + para + "Aujourd'hui c'est jour de match pour les supporters du PSG. Le coup d'envoi face &agrave; "
+              + adv + " aura lieu &agrave; " + heureMatch + ". Tu peux donc " + verbe
+              + " tes pr&eacute;dictions jusqu'&agrave; " + heureCloture + ".</p>"
+
+              + "<p style=\"text-align:center;margin:24px 0;\">"
+              + "<a href=\"https://youprono.fr\" style=\"background:#da1f3d;color:#ffffff;"
+              + "text-decoration:none;padding:14px 26px;border-radius:8px;font-weight:bold;"
+              + "display:inline-block;\">" + (aDejaJoue ? "Voir mon prono" : "Faire mes pronos") + "</a></p>"
+
+              + para + "Bon match et surtout bons pronos. Allez Paris</p>"
+              + "<p style=\"font-size:16px;line-height:1.7;margin-top:22px;\">@lepsgdantoine</p>"
+
+              + "<p style=\"font-size:12px;color:#9fb0d8;line-height:1.6;margin-top:26px;"
+              + "border-top:1px solid #26478e;padding-top:14px;\">"
+              + "<a href=\"" + lienStop + "\" style=\"color:#9fb0d8;\">Ne plus recevoir de rappel avant match</a></p>"
+              + "</div></div>";
+
+            string texteBrut =
+                "Salut " + pseudo + ",\n\n"
+              + "Aujourd'hui c'est jour de match pour les supporters du PSG. Le coup d'envoi face a "
+              + adversaire + " aura lieu a " + heureMatch + ". Tu peux donc " + verbe
+              + " tes predictions jusqu'a " + heureCloture + ".\n\n"
+              + "https://youprono.fr\n\n"
+              + "Bon match et surtout bons pronos. Allez Paris\n\n"
+              + "@lepsgdantoine\n\n"
+              + "---\n"
+              + "Ne plus recevoir de rappel avant match : " + lienStop;
+
+            var charge = new
+            {
+                sender = new { name = "YouProno", email = expediteur },
+                to = new[] { new { email = adresse } },
+                replyTo = new { email = expediteur, name = "YouProno" },
+                subject = "Jour de match : " + affiche,
+                htmlContent = corps,
+                textContent = texteBrut,
+                headers = new Dictionary<string, string>
+                {
+                    { "List-Unsubscribe", "<" + lienStop + ">" },
+                    { "List-Unsubscribe-Post", "List-Unsubscribe=One-Click" }
+                }
+            };
+
+            try
+            {
+                using var req = new HttpRequestMessage(HttpMethod.Post, "https://api.brevo.com/v3/smtp/email");
+                req.Headers.Add("api-key", cle);
+                req.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+                req.Content = new StringContent(JsonSerializer.Serialize(charge), Encoding.UTF8, "application/json");
+                await http.SendAsync(req);
+            }
+            catch { }
+        }
+
+        // Le lien du pied de page : un clic suffit, rien a saisir.
+        public async Task<bool> UnsubscribeAsync(Guid userId)
+        {
+            var user = await dbContext.Users.FirstOrDefaultAsync(w => w.Id.Equals(userId));
+            if (user == null) { return false; }
+
+            user.EmailOptIn = false;
+            await dbContext.SaveChangesAsync();
+            return true;
         }
 
         // ===== MOT DE PASSE OU PSEUDO OUBLIE =====

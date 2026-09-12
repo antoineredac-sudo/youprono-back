@@ -331,6 +331,9 @@ namespace dotnet.core.thegoldenfan.Services
         // veulent entrer dans le salon.
         private static readonly TimeZoneInfo ParisTimeZone = ResolveParisTimeZone();
 
+        // Publique : UserService s'en sert pour savoir s'il fait jour de match.
+        public static TimeZoneInfo ParisTimeZoneInfo => ParisTimeZone;
+
         private static TimeZoneInfo ResolveParisTimeZone()
         {
             try { return TimeZoneInfo.FindSystemTimeZoneById("Europe/Paris"); }
