@@ -129,7 +129,10 @@ namespace dotnet.core.thegoldenfan.Services
                     Total = total,
                     // Aucun match a son actif depuis l'inscription : rien a lui
                     // reprocher, il reste classe.
-                    Classe = total == 0 || (nb * 2) >= total
+                    // Le seuil est de deux tiers des matchs disputes depuis son
+                    // inscription : nb / total >= 2/3, ecrit sans division pour
+                    // rester en nombres entiers.
+                    Classe = total == 0 || (nb * 3) >= (total * 2)
                 };
             }
             return res;
