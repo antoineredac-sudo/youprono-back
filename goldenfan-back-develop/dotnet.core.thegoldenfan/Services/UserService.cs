@@ -220,20 +220,29 @@ namespace dotnet.core.thegoldenfan.Services
                 .Where(w => w.WelcomeSentAt == null && w.Email != null && w.Email != "")
                 .ToListAsync();
 
-            foreach (var user in nouveaux)
+            if (System.Threading.Interlocked.CompareExchange(ref enCoursBienvenue, 1, 0) != 0)
+            { return result; }
+
+            try
             {
-                await EnvoyerBienvenueAsync(user.Email!, user.DisplayName ?? "", user.Id,
-                    prochain, dejaJoue.Contains(user.Id));
+                foreach (var user in nouveaux)
+                {
+                    await EnvoyerBienvenueAsync(user.Email!, user.DisplayName ?? "", user.Id,
+                        prochain, dejaJoue.Contains(user.Id));
 
-                user.WelcomeSentAt = DateTime.UtcNow;
-                result.Envoyes++;
-                result.Pseudos.Add(user.DisplayName ?? "");
+                    // Note apres chaque envoi : une interruption ne fait plus
+                    // perdre que le message en cours.
+                    user.WelcomeSentAt = DateTime.UtcNow;
+                    await dbContext.SaveChangesAsync();
 
-                // Espacer les envois : dix messages identiques partis dans la
-                // meme seconde ressemblent a une campagne, et les filtres les
-                // traitent comme telle. Trois secondes suffisent a casser ca.
-                if (result.Envoyes < nouveaux.Count) { await Task.Delay(3000); }
+                    result.Envoyes++;
+                    result.Pseudos.Add(user.DisplayName ?? "");
+
+                    if (result.Envoyes < nouveaux.Count)
+                    { await Task.Delay(ENVOI_ESPACEMENT_MS); }
+                }
             }
+            finally { System.Threading.Interlocked.Exchange(ref enCoursBienvenue, 0); }
 
             // Ceux qui n'ont pas d'adresse sont marques aussi, pour ne pas etre
             // repasses en revue chaque soir jusqu'a la fin des temps.
@@ -308,13 +317,18 @@ namespace dotnet.core.thegoldenfan.Services
 
               + para + "YouProno se joue entre experts du PSG et surtout entre amis. En jouant &agrave; plusieurs, "
               + "tu as une revanche &agrave; prendre tous les trois jours. D&eacute;fie tes amis et invite-les sur "
-              + "WhatsApp, ta comp&eacute;tition de groupe se construira automatiquement.<br><br>"
-              + "YouProno est un jeu gratuit et sans publicit&eacute; r&eacute;alis&eacute; par des passionn&eacute;s.</p>"
+              + "WhatsApp, ta comp&eacute;tition de groupe se construira automatiquement.</p>"
 
+              // Le bouton suit immediatement l'invitation a defier, et non la
+              // mention du jeu gratuit : un bouton se place sous la phrase qui le
+              // justifie. Il ouvre « Mes groupes d'amis ».
               + "<p style=\"text-align:center;margin:24px 0;\">"
               + "<a href=\"https://youprono.fr/#groups\" style=\"background:#da1f3d;color:#ffffff;"
               + "text-decoration:none;padding:14px 26px;border-radius:8px;font-weight:bold;"
               + "display:inline-block;\">D&eacute;fie tes amis</a></p>"
+
+              + para + "YouProno est un jeu gratuit et sans publicit&eacute; r&eacute;alis&eacute; "
+              + "par des passionn&eacute;s.</p>"
 
               + para + "Allez Paris</p>"
               + "<p style=\"font-size:16px;line-height:1.7;margin-top:22px;\">@lepsgdantoine</p>"
@@ -405,7 +419,26 @@ namespace dotnet.core.thegoldenfan.Services
         }
 
         private const int RAPPEL_HEURE_DEBUT = 8;
-        private const int RAPPEL_HEURE_FIN = 9;
+
+        // Le creneau va desormais jusqu'a 11 h. Les envois se font par passages
+        // successifs : si un passage est interrompu, les suivants reprennent la
+        // file la ou elle en est. Trois heures laissent la place a ces reprises,
+        // quelle que soit la frequence a laquelle UptimeRobot appelle la route.
+        private const int RAPPEL_HEURE_FIN = 11;
+
+        // L'espacement entre deux envois. Trois secondes etaient une prudence
+        // excessive : ce sont des messages transactionnels, un par destinataire,
+        // au contenu personnalise — pas une campagne. A 250 ms, quatre cents
+        // rappels partent en cent secondes au lieu de vingt minutes.
+        private const int ENVOI_ESPACEMENT_MS = 250;
+
+        // Le garde-fou contre le chevauchement. UptimeRobot appelle la route a
+        // intervalle regulier sans savoir si le passage precedent est termine :
+        // deux passages simultanes liraient la meme liste et enverraient deux
+        // fois le meme message. Un seul passage a la fois, par courriel.
+        private static int enCoursBienvenue = 0;
+        private static int enCoursRappel = 0;
+        private static int enCoursResultat = 0;
 
         // Les noms francais des jours et des mois. On ne se fie pas a la culture
         // du serveur : elle depend du conteneur, pas du jeu.
@@ -449,8 +482,8 @@ namespace dotnet.core.thegoldenfan.Services
                 DateTime cloture = m.DateTime.AddHours(-GroupService.ClotureAvantHeures);
                 if (cloture <= maintenantParis) { continue; }
 
-                string domicile = m.HomeTeam.Team?.OfficialName ?? "";
-                string exterieur = m.AwayTeam.Team?.OfficialName ?? "";
+                string domicile = NomEquipe(m.HomeTeam);
+                string exterieur = NomEquipe(m.AwayTeam);
                 bool psgRecoit = m.HomeTeam.TeamId.Equals(teamId);
 
                 return new ProchainMatch
@@ -526,27 +559,48 @@ namespace dotnet.core.thegoldenfan.Services
                 .Distinct()
                 .ToListAsync();
 
+            // La bienvenue part dans le meme creneau de 8 h a 9 h. Un inscrit de
+            // la veille recevrait donc deux messages dans la meme minute, pour le
+            // meme match. La bienvenue porte deja l'affiche, l'heure de cloture et
+            // le bouton : elle suffit, le rappel se tait pour ceux-la.
+            DateTime debutJournee = TimeZoneInfo.ConvertTimeToUtc(
+                maintenantParis.Date, GroupService.ParisTimeZoneInfo);
+
             var destinataires = await dbContext.Users
                 .Where(w => w.EmailOptIn && w.Email != null && w.Email != ""
-                         && (w.LastReminderMatchId == null || w.LastReminderMatchId != match.Id))
+                         && (w.LastReminderMatchId == null || w.LastReminderMatchId != match.Id)
+                         && (w.WelcomeSentAt == null || w.WelcomeSentAt < debutJournee))
                 .ToListAsync();
 
-            foreach (var user in destinataires)
+            // Un seul passage a la fois.
+            if (System.Threading.Interlocked.CompareExchange(ref enCoursRappel, 1, 0) != 0)
+            { return result; }
+
+            try
             {
-                bool aDejaJoue = ontJoue.Contains(user.Id);
+                foreach (var user in destinataires)
+                {
+                    bool aDejaJoue = ontJoue.Contains(user.Id);
 
-                await EnvoyerRappelAsync(user.Email!, user.DisplayName ?? "", user.Id,
-                    adversaire, result.Affiche, heureMatch, heureCloture, aDejaJoue);
+                    await EnvoyerRappelAsync(user.Email!, user.DisplayName ?? "", user.Id,
+                        adversaire, result.Affiche, heureMatch, heureCloture, aDejaJoue);
 
-                user.LastReminderMatchId = match.Id;
-                result.Envoyes++;
-                if (aDejaJoue) { result.DejaJoue++; }
+                    // Enregistre immediatement, avant l'envoi suivant. C'est ce qui
+                    // rend une interruption inoffensive : ce qui est parti est note,
+                    // le passage suivant reprend la file sans jamais renvoyer deux
+                    // fois le meme message.
+                    user.LastReminderMatchId = match.Id;
+                    await dbContext.SaveChangesAsync();
 
-                // Espacer les envois : une salve identique ressemble a une campagne.
-                if (result.Envoyes < destinataires.Count) { await Task.Delay(3000); }
+                    result.Envoyes++;
+                    if (aDejaJoue) { result.DejaJoue++; }
+
+                    if (result.Envoyes < destinataires.Count)
+                    { await Task.Delay(ENVOI_ESPACEMENT_MS); }
+                }
             }
+            finally { System.Threading.Interlocked.Exchange(ref enCoursRappel, 0); }
 
-            if (result.Envoyes > 0) { await dbContext.SaveChangesAsync(); }
             return result;
         }
 
@@ -715,20 +769,29 @@ namespace dotnet.core.thegoldenfan.Services
                          && (w.LastResultMatchId == null || w.LastResultMatchId != match.Id))
                 .ToListAsync();
 
-            foreach (var user in destinataires)
+            if (System.Threading.Interlocked.CompareExchange(ref enCoursResultat, 1, 0) != 0)
+            { return result; }
+
+            try
             {
-                double note = notes.Where(w => w.UserId.Equals(user.Id)).Select(s => s.Note).FirstOrDefault();
+                foreach (var user in destinataires)
+                {
+                    double note = notes.Where(w => w.UserId.Equals(user.Id)).Select(s => s.Note).FirstOrDefault();
 
-                await EnvoyerResultatAsync(user.Email!, user.DisplayName ?? "", user.Id,
-                    result.Affiche, note, joursDepuis == 1);
+                    await EnvoyerResultatAsync(user.Email!, user.DisplayName ?? "", user.Id,
+                        result.Affiche, note, joursDepuis == 1);
 
-                user.LastResultMatchId = match.Id;
-                result.Envoyes++;
+                    user.LastResultMatchId = match.Id;
+                    await dbContext.SaveChangesAsync();
 
-                if (result.Envoyes < destinataires.Count) { await Task.Delay(3000); }
+                    result.Envoyes++;
+
+                    if (result.Envoyes < destinataires.Count)
+                    { await Task.Delay(ENVOI_ESPACEMENT_MS); }
+                }
             }
+            finally { System.Threading.Interlocked.Exchange(ref enCoursResultat, 0); }
 
-            if (result.Envoyes > 0) { await dbContext.SaveChangesAsync(); }
             return result;
         }
 
