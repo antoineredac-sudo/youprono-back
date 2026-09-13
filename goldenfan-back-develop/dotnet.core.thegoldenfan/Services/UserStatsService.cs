@@ -969,8 +969,11 @@ namespace dotnet.core.thegoldenfan.Services
             }
         }
 
-        // Les classes d'abord, numerotes de 1 a n ; les non classes ensuite, sans
-        // rang. L'ordre interne de chaque bloc reste celui des notes.
+        // Tout le monde garde sa place, numerote de 1 a n dans l'ordre des notes.
+        // Celui qui n'a pas joue la moitie des matchs porte simplement Ranked a
+        // faux : le site le grise et le barre a sa place, sans le deplacer ni
+        // renumeroter la liste. Une note vaut son rang ; le seuil dit seulement
+        // qu'elle n'est pas encore meritee sur la duree.
         private static List<UserRanking> AppliquerSeuil(
             List<UserRanking> res, Dictionary<Guid, UserService.EligibiliteResult> eligibilite)
         {
@@ -984,14 +987,8 @@ namespace dotnet.core.thegoldenfan.Services
                 }
             }
 
-            var classes = res.Where(w => w.Ranked).ToList();
-            var sortis = res.Where(w => !w.Ranked).ToList();
-
-            for (int i = 0; i < classes.Count; i++) { classes[i].Rank = i + 1; }
-            foreach (var r in sortis) { r.Rank = 0; r.RankBefore = 0; }
-
-            classes.AddRange(sortis);
-            return classes;
+            for (int i = 0; i < res.Count; i++) { res[i].Rank = i + 1; }
+            return res;
         }
 
         public async Task<List<UserRanking>> RankingByResultFinalTotalAsync(string teamId)
