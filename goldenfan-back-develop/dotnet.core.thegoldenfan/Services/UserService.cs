@@ -1,4 +1,4 @@
-using dotnet.core.thegoldenfan.Dbs;
+﻿using dotnet.core.thegoldenfan.Dbs;
 using dotnet.core.utils;
 using dotnet.core.utils.Helpers;
 using dotnet.core.utils.server.Helpers;
@@ -486,11 +486,30 @@ namespace dotnet.core.thegoldenfan.Services
             if (maintenantParis >= cloture) { return result; }
 
             result.MatchId = match.Id;
-            string domicile = match.HomeTeam.Team?.OfficialName ?? "";
-            string exterieur = match.AwayTeam.Team?.OfficialName ?? "";
+
+            // Le nom officiel est vide pour une equipe creee depuis la console
+            // admin : « Stade Brestois 29 » n'existe que dans Name. Le rappel
+            // affichait donc « le coup d'envoi face a » suivi de rien. On essaie
+            // les trois champs connus, comme le site et le record du groupe.
+            static string Nom(TeamMatch? cote)
+            {
+                var t = cote?.Team;
+                if (t == null) { return ""; }
+                if (!string.IsNullOrWhiteSpace(t.OfficialName)) { return t.OfficialName!; }
+                if (!string.IsNullOrWhiteSpace(t.Name)) { return t.Name; }
+                if (!string.IsNullOrWhiteSpace(t.ShortName)) { return t.ShortName!; }
+                return "";
+            }
+
+            string domicile = Nom(match.HomeTeam);
+            string exterieur = Nom(match.AwayTeam);
 
             bool psgRecoit = match.HomeTeam.TeamId.Equals(teamId);
             string adversaire = psgRecoit ? exterieur : domicile;
+
+            // Dernier filet : plutot qu'une phrase amputee, on nomme l'adversaire
+            // par defaut. Personne ne doit recevoir « face a  aura lieu ».
+            if (string.IsNullOrWhiteSpace(adversaire)) { adversaire = "l'adversaire du jour"; }
 
             // L'affiche cite toujours l'equipe qui recoit en premier, comme partout
             // ailleurs dans le football. Le PSG s'abrege dans l'objet du message.
