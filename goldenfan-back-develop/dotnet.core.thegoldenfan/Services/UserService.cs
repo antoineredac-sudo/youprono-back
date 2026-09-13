@@ -389,6 +389,21 @@ namespace dotnet.core.thegoldenfan.Services
         // Le creneau d'envoi des courriels, heure de Paris. Il vaut pour les trois :
         // la bienvenue, le rappel du matin de match, et le lendemain de match.
         // 8 signifie « a partir de 8 h 00 », 9 signifie « jusqu'a 8 h 59 ».
+        // Le nom officiel est vide pour une equipe creee depuis la console admin :
+        // « Stade Brestois 29 » n'existe que dans Name. Sans ce repli, le rappel
+        // annoncait « le coup d'envoi face a » suivi de rien, et le courriel de
+        // resultat affichait « PSG - ». On essaie les trois champs connus, comme
+        // le site et le record du groupe.
+        private static string NomEquipe(TeamMatch? cote)
+        {
+            var t = cote?.Team;
+            if (t == null) { return ""; }
+            if (!string.IsNullOrWhiteSpace(t.OfficialName)) { return t.OfficialName!; }
+            if (!string.IsNullOrWhiteSpace(t.Name)) { return t.Name; }
+            if (!string.IsNullOrWhiteSpace(t.ShortName)) { return t.ShortName!; }
+            return "";
+        }
+
         private const int RAPPEL_HEURE_DEBUT = 8;
         private const int RAPPEL_HEURE_FIN = 9;
 
@@ -487,22 +502,8 @@ namespace dotnet.core.thegoldenfan.Services
 
             result.MatchId = match.Id;
 
-            // Le nom officiel est vide pour une equipe creee depuis la console
-            // admin : « Stade Brestois 29 » n'existe que dans Name. Le rappel
-            // affichait donc « le coup d'envoi face a » suivi de rien. On essaie
-            // les trois champs connus, comme le site et le record du groupe.
-            static string Nom(TeamMatch? cote)
-            {
-                var t = cote?.Team;
-                if (t == null) { return ""; }
-                if (!string.IsNullOrWhiteSpace(t.OfficialName)) { return t.OfficialName!; }
-                if (!string.IsNullOrWhiteSpace(t.Name)) { return t.Name; }
-                if (!string.IsNullOrWhiteSpace(t.ShortName)) { return t.ShortName!; }
-                return "";
-            }
-
-            string domicile = Nom(match.HomeTeam);
-            string exterieur = Nom(match.AwayTeam);
+            string domicile = NomEquipe(match.HomeTeam);
+            string exterieur = NomEquipe(match.AwayTeam);
 
             bool psgRecoit = match.HomeTeam.TeamId.Equals(teamId);
             string adversaire = psgRecoit ? exterieur : domicile;
@@ -667,6 +668,15 @@ namespace dotnet.core.thegoldenfan.Services
             if (maintenantParis.Hour < RAPPEL_HEURE_DEBUT || maintenantParis.Hour >= RAPPEL_HEURE_FIN)
             { return result; }
 
+            // Un jour de match, ce courriel n'a rien a faire dans la boite : le
+            // rappel du matin part deja, et annoncer le resultat de la rencontre
+            // precedente au moment de pronostiquer la suivante n'a aucun sens
+            // pour le joueur.
+            bool jourDeMatch = await dbContext.Matches
+                .AnyAsync(w => (w.HomeTeam.TeamId.Equals(teamId) || w.AwayTeam.TeamId.Equals(teamId))
+                            && w.DateTime.Date == maintenantParis.Date);
+            if (jourDeMatch) { return result; }
+
             // Le dernier match note de l'equipe.
             var dernier = await dbContext.UserMatches
                 .Where(w => w.TeamId.Equals(teamId) && w.ResultTotal.HasValue)
@@ -678,10 +688,17 @@ namespace dotnet.core.thegoldenfan.Services
             if (dernier == null) { return result; }
 
             var match = dernier.Match;
+
+            // La fenetre. Le message parle d'hier : passe deux jours, il ne parle
+            // plus de rien. Sans cette borne, un match note lundi continuait de
+            // partir le jeudi a quiconque ne l'avait pas encore recu.
+            int joursDepuis = (maintenantParis.Date - match.DateTime.Date).Days;
+            if (joursDepuis < 1 || joursDepuis > 2) { return result; }
+
             result.MatchId = match.Id;
 
-            string domicile = match.HomeTeam.Team?.OfficialName ?? "";
-            string exterieur = match.AwayTeam.Team?.OfficialName ?? "";
+            string domicile = NomEquipe(match.HomeTeam);
+            string exterieur = NomEquipe(match.AwayTeam);
             bool psgRecoit = match.HomeTeam.TeamId.Equals(teamId);
             result.Affiche = (psgRecoit ? "PSG" : domicile) + " - " + (psgRecoit ? exterieur : "PSG");
 
@@ -703,7 +720,7 @@ namespace dotnet.core.thegoldenfan.Services
                 double note = notes.Where(w => w.UserId.Equals(user.Id)).Select(s => s.Note).FirstOrDefault();
 
                 await EnvoyerResultatAsync(user.Email!, user.DisplayName ?? "", user.Id,
-                    result.Affiche, note);
+                    result.Affiche, note, joursDepuis == 1);
 
                 user.LastResultMatchId = match.Id;
                 result.Envoyes++;
@@ -716,7 +733,7 @@ namespace dotnet.core.thegoldenfan.Services
         }
 
         private static async Task EnvoyerResultatAsync(string adresse, string pseudo, Guid userId,
-            string affiche, double note)
+            string affiche, double note, bool hier)
         {
             string cle = Environment.GetEnvironmentVariable("BREVO_API_KEY") ?? "";
             if (string.IsNullOrWhiteSpace(cle)) { return; }
@@ -726,6 +743,11 @@ namespace dotnet.core.thegoldenfan.Services
             string aff = System.Net.WebUtility.HtmlEncode(affiche);
             string lienStop = "https://youprono.fr/#stop/" + userId.ToString();
             string noteTexte = note.ToString("0.000", System.Globalization.CultureInfo.GetCultureInfo("fr-FR"));
+
+            // « Hier » n'est vrai que le lendemain. Quand les statistiques ont ete
+            // saisies tard et que le message part le surlendemain, on enleve le mot
+            // plutot que de dater faux.
+            string ouverture = hier ? "Hier tu as obtenu" : "Tu as obtenu";
             const string para = "<p style=\"font-size:16px;line-height:1.7;\">";
 
             string corps =
@@ -736,7 +758,7 @@ namespace dotnet.core.thegoldenfan.Services
 
               + para + "Salut " + nom + ",</p>"
 
-              + para + "Hier tu as obtenu la note de <b style=\"color:#e8b923;\">" + noteTexte
+              + para + ouverture + " la note de <b style=\"color:#e8b923;\">" + noteTexte
               + "</b> sur le match " + aff + ". D&eacute;couvre ta nouvelle position aux classements "
               + "et le prochain match qui est d&eacute;j&agrave; ouvert aux pronos.</p>"
 
@@ -756,7 +778,7 @@ namespace dotnet.core.thegoldenfan.Services
 
             string texteBrut =
                 "Salut " + pseudo + ",\n\n"
-              + "Hier tu as obtenu la note de " + noteTexte + " sur le match " + affiche
+              + ouverture + " la note de " + noteTexte + " sur le match " + affiche
               + ". Decouvre ta nouvelle position aux classements et le prochain match qui est deja "
               + "ouvert aux pronos.\n\n"
               + "https://youprono.fr\n\n"
