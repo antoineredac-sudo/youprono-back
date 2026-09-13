@@ -158,9 +158,33 @@ namespace dotnet.core.thegoldenfan.Services
             return newObj;
         }
 
+        // Le verrou de clôture, côté serveur. Jusqu'ici seul le site fermait les
+        // pronostics : n'importe qui pouvait passer par Swagger pour créer, modifier
+        // ou effacer un pronostic après la clôture. La clôture tombe
+        // GroupService.ClotureAvantHeures avant le coup d'envoi, heure de Paris,
+        // comme partout ailleurs. Un match déjà noté (« Played ») est fermé quoi
+        // qu'il arrive. Code d'erreur -10 : « pronostics fermés ».
+        private async Task VerifierClotureAsync(string matchId, string src)
+        {
+            var match = await dbContext
+                .Matches
+                .AsNoTracking()
+                .FirstOrDefaultAsync(w => w.Id.Equals(matchId));
+            if (match == null) { throw BaseException.NotFound(-9, src); }
+
+            if (!string.IsNullOrEmpty(match.Status) &&
+                match.Status.Equals("Played", StringComparison.OrdinalIgnoreCase))
+            { throw BaseException.InvalidModel(-10, src); }
+
+            DateTime clotureUtc = GroupService.ParisToUtc(
+                match.DateTime.AddHours(-GroupService.ClotureAvantHeures));
+            if (DateTime.UtcNow >= clotureUtc) { throw BaseException.InvalidModel(-10, src); }
+        }
+
         public async Task<UserPredictionModel> CreateAsync(UserPredictionModel model)
         {
             string src = "UserMatchService.CreateAsync";
+            await VerifierClotureAsync(model.MatchId, src);
             var inDb = await dbContext
                 .UserMatches
                 .FirstOrDefaultAsync(w => w.UserId.Equals(model.UserId) &&
@@ -190,6 +214,7 @@ namespace dotnet.core.thegoldenfan.Services
         public async Task<UserPredictionModel> UpdateAsync(UserPredictionModel model)
         {
             string src = "UserMatchService.UpdateAsync";
+            await VerifierClotureAsync(model.MatchId, src);
             var inDb = await dbContext
                 .UserMatches
                 .Include(i => i.UserPlayerForMatches)
@@ -238,6 +263,13 @@ namespace dotnet.core.thegoldenfan.Services
                 .Where(w => ids.Any(a => w.Id.Equals(a)))
                 .ToListAsync();
             if (lo == null) { throw BaseException.NotFound(-1, src); }
+
+            // Effacer un pronostic après la clôture est aussi une triche :
+            // on ferait disparaître une mauvaise note avant la notation.
+            foreach (var item in lo)
+            {
+                await VerifierClotureAsync(item.MatchId, src);
+            }
 
             if (lo.Count > 0)
             {
