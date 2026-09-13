@@ -270,7 +270,6 @@ namespace dotnet.core.thegoldenfan.Services
             // Le meme lien que dans les rappels : un seul interrupteur, une seule
             // facon de s'en aller.
             string lienStop = "https://youprono.fr/#stop/" + userId.ToString();
-            const string paraBloc = "<p style=\"font-size:16px;line-height:1.7;\">";
 
             // Le prochain match, quand il y en a un d'ouvert. Le bouton pousse a
             // jouer ; celui qui a deja pronostique est invite a relire son prono.
@@ -279,65 +278,47 @@ namespace dotnet.core.thegoldenfan.Services
             if (prochain != null)
             {
                 string aff = System.Net.WebUtility.HtmlEncode(prochain.Affiche);
-                string libelle = aDejaJoue ? "Voir mon prono" : "Faire mes pronos";
+                string libelle = aDejaJoue ? "Modifie ton prono" : "Fais tes pronos";
 
                 blocProchain =
-                    paraBloc + "Prochain match : <b>" + aff + "</b>. Les pronos ferment "
-                  + prochain.ClotureEnClair + ".</p>"
-                  + "<p style=\"text-align:center;margin:24px 0;\">"
-                  + "<a href=\"https://youprono.fr\" style=\"background:#da1f3d;color:#ffffff;"
-                  + "text-decoration:none;padding:14px 26px;border-radius:8px;font-weight:bold;"
-                  + "display:inline-block;\">" + libelle + "</a></p>";
+                    BlocMatchHtml(aff, "Les pronos ferment " + prochain.ClotureEnClair)
+                  + BoutonHtml("https://youprono.fr", libelle, false, false);
 
                 blocProchainTexte =
                     "Prochain match : " + prochain.Affiche + ". Les pronos ferment "
                   + prochain.ClotureEnClair + ".\n"
                   + "https://youprono.fr\n\n";
             }
-            const string para = "<p style=\"font-size:16px;line-height:1.7;\">";
 
-            string corps =
-                "<div style=\"font-family:Arial,sans-serif;background:#0b2265;padding:28px;color:#ffffff;\">"
-              + "<div style=\"max-width:520px;margin:0 auto;background:#14306f;border:1px solid #26478e;"
-              + "border-radius:12px;padding:26px;\">"
-              + "<div style=\"color:#e8b923;font-size:22px;font-weight:bold;margin-bottom:18px;\">YouProno</div>"
+            string contenu =
+                PARA + "Salut " + nom + ",</p>"
 
-              + para + "Salut " + nom + ",</p>"
+              + PARA + "Tu viens de rejoindre YouProno, un terrain de jeu o&ugrave; le match se "
+              + "d&eacute;roule plusieurs heures avant le coup d'envoi. Quelle compo va aligner "
+              + "Enrique ? Qui aura le contr&ocirc;le du jeu ? Le match sera-t-il ferm&eacute; ou "
+              + "en mode box to box ? La rencontre sera-t-elle engag&eacute;e ? Le jeu passera-t-il "
+              + "par l'axe ou les ailes ? Et surtout qui va gagner ?</p>"
 
-              + para + "Tu viens de rejoindre YouProno, un terrain de jeu o&ugrave; le match se d&eacute;roule "
-              + "plusieurs heures avant le coup d'envoi. Quelle compo va aligner Enrique ? Qui aura le contr&ocirc;le du jeu ? Le match "
-              + "sera-t-il ferm&eacute; ou en mode box to box ? La rencontre sera-t-elle engag&eacute;e ? Le jeu "
-              + "passera-t-il par l'axe ou les ailes ? Et surtout qui va gagner ?</p>"
-
-              + para + "&Agrave; toi d'anticiper jusqu'&agrave; 2 heures avant le coup d'envoi. Quelques minutes "
-              + "apr&egrave;s la fin du match, tes pr&eacute;dictions sont compar&eacute;es aux stats officielles "
-              + "pour te donner une note.</p>"
+              + PARA + "&Agrave; toi d'anticiper jusqu'&agrave; 2 heures avant le coup d'envoi. "
+              + "Quelques minutes apr&egrave;s la fin du match, tes pr&eacute;dictions sont "
+              + "compar&eacute;es aux stats officielles pour te donner une note.</p>"
 
               + blocProchain
 
-              + para + "YouProno se joue entre experts du PSG et surtout entre amis. En jouant &agrave; plusieurs, "
-              + "tu as une revanche &agrave; prendre tous les trois jours. D&eacute;fie tes amis et invite-les sur "
-              + "WhatsApp, ta comp&eacute;tition de groupe se construira automatiquement.</p>"
+              + PARA + "YouProno se joue entre experts du PSG et surtout entre amis. En jouant "
+              + "&agrave; plusieurs, tu as une revanche &agrave; prendre tous les trois jours. "
+              + "Invite-les sur WhatsApp, ta comp&eacute;tition de groupe se construira "
+              + "automatiquement.</p>"
 
-              // Le bouton suit immediatement l'invitation a defier, et non la
-              // mention du jeu gratuit : un bouton se place sous la phrase qui le
-              // justifie. Il ouvre « Mes groupes d'amis ».
-              + "<p style=\"text-align:center;margin:24px 0;\">"
-              + "<a href=\"https://youprono.fr/#groups\" style=\"background:#da1f3d;color:#ffffff;"
-              + "text-decoration:none;padding:14px 26px;border-radius:8px;font-weight:bold;"
-              + "display:inline-block;\">D&eacute;fie tes amis</a></p>"
+              + BoutonHtml("https://youprono.fr/#groups", "D&eacute;fie tes amis", true, true)
 
-              + para + "YouProno est un jeu gratuit et sans publicit&eacute; r&eacute;alis&eacute; "
+              + PARA + "YouProno est un jeu gratuit et sans publicit&eacute; r&eacute;alis&eacute; "
               + "par des passionn&eacute;s.</p>"
 
-              + para + "Allez Paris</p>"
-              + "<p style=\"font-size:16px;line-height:1.7;margin-top:22px;\">@lepsgdantoine</p>"
+              + "<p style=\"font-family:" + POLICE + ";font-size:16px;line-height:1.7;"
+              + "color:" + C_OR + ";margin:22px 0 0;font-weight:bold;\">Allez Paris</p>";
 
-              + "<p style=\"font-size:12px;color:#9fb0d8;line-height:1.6;margin-top:26px;"
-              + "border-top:1px solid #26478e;padding-top:14px;\">"
-              + "<a href=\"" + lienStop + "\" style=\"color:#9fb0d8;\">Ne plus recevoir de rappel "
-              + "avant match</a></p>"
-              + "</div></div>";
+            string corps = CadreHtml("Bienvenue", contenu, lienStop);
 
             // La version texte du meme message. Un courriel qui n'existe qu'en
             // HTML est un signal de campagne : les vrais messages portent les deux.
@@ -416,6 +397,111 @@ namespace dotnet.core.thegoldenfan.Services
             if (!string.IsNullOrWhiteSpace(t.Name)) { return t.Name; }
             if (!string.IsNullOrWhiteSpace(t.ShortName)) { return t.ShortName!; }
             return "";
+        }
+
+
+        // ===== L'HABILLAGE DES COURRIELS =====
+        // Un courriel n'est pas une page web : Gmail retire les SVG, ignore les
+        // mises en page modernes et ne charge aucune police web. Tout passe donc
+        // par des tableaux, des styles ecrits sur chaque balise, et des images
+        // hebergees sur le site. Les couleurs sont celles du jeu.
+        private const string C_FOND     = "#0b2265";
+        private const string C_CARTE    = "#14306f";
+        private const string C_BANDE    = "#0a1c48";
+        private const string C_BORD     = "#26478e";
+        private const string C_OR       = "#e8b923";
+        private const string C_ROUGE    = "#da1f3d";
+        private const string C_VERT     = "#25d366";
+        private const string C_VERTENCRE= "#04341a";
+        private const string C_TEXTE    = "#ffffff";
+        private const string C_GRIS     = "#c2cae8";
+        private const string POLICE     = "Arial,Helvetica,sans-serif";
+
+        private const string PARA =
+            "<p style=\"font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:1.7;"
+          + "color:#ffffff;margin:0 0 16px;\">";
+
+        // Le bandeau du haut : le blason hexagonal, le nom en or, un filet dore.
+        // Le logo est deja en ligne sur le site, aucune image a televerser.
+        private static string EnteteHtml(string surtitre)
+        {
+            return
+              "<tr><td style=\"background:" + C_BANDE + ";border-bottom:2px solid " + C_OR + ";"
+            + "padding:20px 24px;text-align:center;\">"
+            + "<img src=\"https://youprono.fr/icone-192.png\" width=\"44\" height=\"44\" alt=\"\" "
+            + "style=\"display:block;margin:0 auto 8px;border:0;\">"
+            + "<div style=\"font-family:" + POLICE + ";font-size:21px;font-weight:bold;"
+            + "letter-spacing:2px;color:" + C_OR + ";\">YOUPRONO</div>"
+            + (string.IsNullOrEmpty(surtitre) ? ""
+               : "<div style=\"font-family:" + POLICE + ";font-size:11px;letter-spacing:2px;"
+                 + "color:" + C_GRIS + ";margin-top:6px;text-transform:uppercase;\">" + surtitre + "</div>")
+            + "</td></tr>";
+        }
+
+        // Le bloc de l'affiche, dessine comme la carte du prochain match dans le
+        // jeu : fond plus sombre, filet dore, l'affiche en gros et l'horaire dessous.
+        private static string BlocMatchHtml(string affiche, string sousTitre)
+        {
+            return
+              "<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" "
+            + "style=\"margin:0 0 20px;\"><tr>"
+            + "<td style=\"background:" + C_BANDE + ";border:1px solid " + C_OR + ";border-radius:10px;"
+            + "padding:16px;text-align:center;\">"
+            + "<div style=\"font-family:" + POLICE + ";font-size:19px;font-weight:bold;"
+            + "letter-spacing:.5px;color:" + C_TEXTE + ";\">" + affiche + "</div>"
+            + "<div style=\"font-family:" + POLICE + ";font-size:13px;color:" + C_OR + ";"
+            + "margin-top:7px;\">" + sousTitre + "</div>"
+            + "</td></tr></table>";
+        }
+
+        // Un bouton. Rouge par defaut, vert pour WhatsApp — la meme regle que dans
+        // le jeu, ou le rouge est reserve aux actions du jeu.
+        private static string BoutonHtml(string url, string libelle, bool vert, bool picto)
+        {
+            string fond = vert ? C_VERT : C_ROUGE;
+            string encre = vert ? C_VERTENCRE : C_TEXTE;
+            string image = picto
+                ? "<img src=\"https://youprono.fr/whatsapp.png\" width=\"18\" height=\"18\" alt=\"\" "
+                  + "style=\"vertical-align:-3px;margin-right:8px;border:0;\">"
+                : "";
+
+            return
+              "<table role=\"presentation\" cellpadding=\"0\" cellspacing=\"0\" "
+            + "style=\"margin:0 auto 14px;\"><tr>"
+            + "<td style=\"background:" + fond + ";border-radius:8px;\">"
+            + "<a href=\"" + url + "\" style=\"display:inline-block;padding:15px 30px;"
+            + "font-family:" + POLICE + ";font-size:16px;font-weight:bold;letter-spacing:.5px;"
+            + "color:" + encre + ";text-decoration:none;\">" + image + libelle + "</a>"
+            + "</td></tr></table>";
+        }
+
+        // Le pied : le filet, la signature, le lien de desabonnement.
+        private static string PiedHtml(string lienStop)
+        {
+            return
+              "<tr><td style=\"background:" + C_BANDE + ";border-top:1px solid " + C_BORD + ";"
+            + "padding:18px 24px;text-align:center;\">"
+            + "<div style=\"font-family:" + POLICE + ";font-size:14px;color:" + C_OR + ";"
+            + "font-weight:bold;\">@lepsgdantoine</div>"
+            + "<div style=\"font-family:" + POLICE + ";font-size:11px;color:#8b99d0;"
+            + "margin-top:10px;line-height:1.6;\">"
+            + "<a href=\"" + lienStop + "\" style=\"color:#8b99d0;\">Ne plus recevoir de rappel "
+            + "avant match</a></div>"
+            + "</td></tr>";
+        }
+
+        // Le cadre commun : fond marine, carte centree, entete et pied.
+        private static string CadreHtml(string surtitre, string contenu, string lienStop)
+        {
+            return
+              "<div style=\"background:" + C_FOND + ";padding:24px 12px;\">"
+            + "<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" "
+            + "style=\"max-width:520px;margin:0 auto;background:" + C_CARTE + ";"
+            + "border:1px solid " + C_BORD + ";border-radius:14px;overflow:hidden;\">"
+            + EnteteHtml(surtitre)
+            + "<tr><td style=\"padding:26px 24px 20px;\">" + contenu + "</td></tr>"
+            + PiedHtml(lienStop)
+            + "</table></div>";
         }
 
         private const int RAPPEL_HEURE_DEBUT = 8;
@@ -612,38 +698,34 @@ namespace dotnet.core.thegoldenfan.Services
 
             string expediteur = Environment.GetEnvironmentVariable("MAIL_FROM") ?? "contact@youprono.fr";
             string nom = System.Net.WebUtility.HtmlEncode(pseudo);
-            string adv = System.Net.WebUtility.HtmlEncode(adversaire);
             string lienStop = "https://youprono.fr/#stop/" + userId.ToString();
-            const string para = "<p style=\"font-size:16px;line-height:1.7;\">";
 
             // « faire et modifier » pour celui qui n'a rien fait, « modifier »
             // seulement pour celui qui a deja pronostique.
             string verbe = aDejaJoue ? "modifier" : "faire et modifier";
 
-            string corps =
-                "<div style=\"font-family:Arial,sans-serif;background:#0b2265;padding:28px;color:#ffffff;\">"
-              + "<div style=\"max-width:520px;margin:0 auto;background:#14306f;border:1px solid #26478e;"
-              + "border-radius:12px;padding:26px;\">"
-              + "<div style=\"color:#e8b923;font-size:22px;font-weight:bold;margin-bottom:18px;\">YouProno</div>"
+            string libelleBouton = aDejaJoue ? "Modifie ton prono" : "Fais tes pronos";
 
-              + para + "Salut " + nom + ",</p>"
+            string contenu =
+                PARA + "Salut " + nom + ",</p>"
 
-              + para + "Aujourd'hui c'est jour de match pour les supporters du PSG. Le coup d'envoi face &agrave; "
-              + adv + " aura lieu &agrave; " + heureMatch + ". Tu peux donc " + verbe
-              + " tes pr&eacute;dictions jusqu'&agrave; " + heureCloture + ".</p>"
+              + PARA + "Aujourd'hui c'est jour de match pour les supporters du PSG.</p>"
 
-              + "<p style=\"text-align:center;margin:24px 0;\">"
-              + "<a href=\"https://youprono.fr\" style=\"background:#da1f3d;color:#ffffff;"
-              + "text-decoration:none;padding:14px 26px;border-radius:8px;font-weight:bold;"
-              + "display:inline-block;\">" + (aDejaJoue ? "Voir mon prono" : "Faire mes pronos") + "</a></p>"
+              + BlocMatchHtml(System.Net.WebUtility.HtmlEncode(affiche),
+                    "Coup d'envoi &agrave; " + heureMatch + " &middot; pronos ferm&eacute;s &agrave; "
+                  + heureCloture)
 
-              + para + "Bon match et surtout bons pronos. Allez Paris</p>"
-              + "<p style=\"font-size:16px;line-height:1.7;margin-top:22px;\">@lepsgdantoine</p>"
+              + PARA + "Tu peux " + verbe + " tes pr&eacute;dictions jusqu'&agrave; "
+              + heureCloture + ".</p>"
 
-              + "<p style=\"font-size:12px;color:#9fb0d8;line-height:1.6;margin-top:26px;"
-              + "border-top:1px solid #26478e;padding-top:14px;\">"
-              + "<a href=\"" + lienStop + "\" style=\"color:#9fb0d8;\">Ne plus recevoir de rappel avant match</a></p>"
-              + "</div></div>";
+              + BoutonHtml("https://youprono.fr", libelleBouton, false, false)
+
+              + PARA + "Bon match et surtout bons pronos.</p>"
+
+              + "<p style=\"font-family:" + POLICE + ";font-size:16px;line-height:1.7;"
+              + "color:" + C_OR + ";margin:22px 0 0;font-weight:bold;\">Allez Paris</p>";
+
+            string corps = CadreHtml("Jour de match", contenu, lienStop);
 
             string texteBrut =
                 "Salut " + pseudo + ",\n\n"
@@ -811,33 +893,33 @@ namespace dotnet.core.thegoldenfan.Services
             // saisies tard et que le message part le surlendemain, on enleve le mot
             // plutot que de dater faux.
             string ouverture = hier ? "Hier tu as obtenu" : "Tu as obtenu";
-            const string para = "<p style=\"font-size:16px;line-height:1.7;\">";
 
-            string corps =
-                "<div style=\"font-family:Arial,sans-serif;background:#0b2265;padding:28px;color:#ffffff;\">"
-              + "<div style=\"max-width:520px;margin:0 auto;background:#14306f;border:1px solid #26478e;"
-              + "border-radius:12px;padding:26px;\">"
-              + "<div style=\"color:#e8b923;font-size:22px;font-weight:bold;margin-bottom:18px;\">YouProno</div>"
+            string contenu =
+                PARA + "Salut " + nom + ",</p>"
 
-              + para + "Salut " + nom + ",</p>"
+              + "<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" "
+              + "style=\"margin:0 0 20px;\"><tr>"
+              + "<td style=\"background:" + C_BANDE + ";border:1px solid " + C_OR + ";"
+              + "border-radius:10px;padding:20px;text-align:center;\">"
+              + "<div style=\"font-family:" + POLICE + ";font-size:11px;letter-spacing:2px;"
+              + "color:" + C_GRIS + ";text-transform:uppercase;\">Ta note sur ce match</div>"
+              + "<div style=\"font-family:" + POLICE + ";font-size:42px;font-weight:bold;"
+              + "color:" + C_OR + ";line-height:1.1;margin:6px 0 2px;\">" + noteTexte + "</div>"
+              + "<div style=\"font-family:" + POLICE + ";font-size:12px;color:" + C_GRIS + ";\">"
+              + "sur 100</div>"
+              + "<div style=\"font-family:" + POLICE + ";font-size:14px;color:" + C_TEXTE + ";"
+              + "margin-top:12px;font-weight:bold;\">" + aff + "</div>"
+              + "</td></tr></table>"
 
-              + para + ouverture + " la note de <b style=\"color:#e8b923;\">" + noteTexte
-              + "</b> sur le match " + aff + ". D&eacute;couvre ta nouvelle position aux classements "
-              + "et le prochain match qui est d&eacute;j&agrave; ouvert aux pronos.</p>"
+              + PARA + ouverture + " cette note. D&eacute;couvre ta nouvelle position aux "
+              + "classements et le prochain match, d&eacute;j&agrave; ouvert aux pronos.</p>"
 
-              + "<p style=\"text-align:center;margin:24px 0;\">"
-              + "<a href=\"https://youprono.fr\" style=\"background:#da1f3d;color:#ffffff;"
-              + "text-decoration:none;padding:14px 26px;border-radius:8px;font-weight:bold;"
-              + "display:inline-block;\">Voir mon r&eacute;sultat</a></p>"
+              + BoutonHtml("https://youprono.fr", "D&eacute;couvre ton r&eacute;sultat", false, false)
 
-              + para + "Allez Paris</p>"
-              + "<p style=\"font-size:16px;line-height:1.7;margin-top:22px;\">@lepsgdantoine</p>"
+              + "<p style=\"font-family:" + POLICE + ";font-size:16px;line-height:1.7;"
+              + "color:" + C_OR + ";margin:22px 0 0;font-weight:bold;\">Allez Paris</p>";
 
-              + "<p style=\"font-size:12px;color:#9fb0d8;line-height:1.6;margin-top:26px;"
-              + "border-top:1px solid #26478e;padding-top:14px;\">"
-              + "<a href=\"" + lienStop + "\" style=\"color:#9fb0d8;\">Ne plus recevoir de rappel "
-              + "avant match</a></p>"
-              + "</div></div>";
+            string corps = CadreHtml("Ta note", contenu, lienStop);
 
             string texteBrut =
                 "Salut " + pseudo + ",\n\n"
