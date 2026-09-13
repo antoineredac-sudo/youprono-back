@@ -507,6 +507,10 @@ namespace dotnet.core.thegoldenfan.Services
             + "</table></div>";
         }
 
+        // Les bornes du pseudo. Le site porte les memes valeurs sur son champ.
+        public const int PSEUDO_MIN = 2;
+        public const int PSEUDO_MAX = 16;
+
         private const int RAPPEL_HEURE_DEBUT = 8;
 
         // Le creneau va desormais jusqu'a 11 h. Les envois se font par passages
@@ -1230,14 +1234,23 @@ namespace dotnet.core.thegoldenfan.Services
             // qui oublie son pseudo perd son compte sans aucun recours.
             if (!EmailPlausible(model.Email)) { throw BaseException.InvalidModel(-3, src); }
 
-            var normalized = StringHelper.NormalizeString(model.DisplayName);
+            // Entre 2 et 16 caracteres. Le site pose la meme borne sur le champ,
+            // mais Swagger ne passe pas par le site : la verification doit etre
+            // ici aussi. Un pseudo trop long deborde des classements et se
+            // retrouve colle dans les courriels et les messages de partage.
+            // Code -4 : « longueur de pseudo invalide ».
+            string pseudo = model.DisplayName.Trim();
+            if (pseudo.Length < PSEUDO_MIN || pseudo.Length > PSEUDO_MAX)
+            { throw BaseException.InvalidModel(-4, src); }
+
+            var normalized = StringHelper.NormalizeString(pseudo);
             var existing = await dbContext.Users.FirstOrDefaultAsync(w => w.NormalizedDisplayName!.Equals(normalized));
             if (existing != null) { throw BaseException.AlreadyInDb(-2, src); }
 
             var newObj = new User
             {
                 Id = Guid.NewGuid(),
-                DisplayName = model.DisplayName,
+                DisplayName = pseudo,
                 NormalizedDisplayName = normalized,
                 Password = PasswordHelper.HashPassword(model.Password),
                 Email = model.Email.Trim(),
