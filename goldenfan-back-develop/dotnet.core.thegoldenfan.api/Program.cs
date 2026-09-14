@@ -1,4 +1,4 @@
-using dotnet.core.thegoldenfan;
+﻿using dotnet.core.thegoldenfan;
 using dotnet.core.thegoldenfan.Dbs;
 using dotnet.core.utils.Helpers;
 using dotnet.core.utils.server;
@@ -48,6 +48,11 @@ using (var scope = app.Services.CreateScope())
         // Date d'envoi du courriel de bienvenue.
         db.Database.ExecuteSqlRaw(
             "ALTER TABLE \"User\" ADD COLUMN IF NOT EXISTS \"WelcomeSentAt\" timestamp without time zone;");
+
+        // Nombre de tentatives d'envoi de ce courriel. Au-dela de trois, on cesse
+        // d'essayer : l'adresse est refusee par Brevo et le sera toujours.
+        db.Database.ExecuteSqlRaw(
+            "ALTER TABLE \"User\" ADD COLUMN IF NOT EXISTS \"WelcomeTries\" integer NOT NULL DEFAULT 0;");
 
         // Le dernier match pour lequel un rappel avant match est parti.
         db.Database.ExecuteSqlRaw(
@@ -118,7 +123,22 @@ using (var scope = app.Services.CreateScope())
     }
 }
 
-app.UseSwaggerService();
+// Swagger n'est plus servi sur /swagger : cette adresse repond desormais 404.
+// L'interface vit a l'adresse indiquee par la variable d'environnement
+// SWAGGER_PATH, connue de l'editeur seul. Variable absente ou vide : pas de
+// Swagger du tout, ce qui est le comportement sur lequel on veut retomber en
+// cas d'oubli. La documentation JSON suit la meme adresse, sans quoi elle
+// exposerait la liste des routes a qui sait ou regarder.
+string swaggerPath = (Environment.GetEnvironmentVariable("SWAGGER_PATH") ?? "").Trim('/', ' ');
+if (!string.IsNullOrEmpty(swaggerPath))
+{
+    app.UseSwagger(c => c.RouteTemplate = swaggerPath + "/{documentName}/swagger.json");
+    app.UseSwaggerUI(c =>
+    {
+        c.SwaggerEndpoint("/" + swaggerPath + "/v1/swagger.json", "YouProno");
+        c.RoutePrefix = swaggerPath;
+    });
+}
 app.UseCors(dotnet.core.utils.server.ConfigureService.CorsOrigins);
 app.MapControllers();
 app.Run();
