@@ -281,7 +281,7 @@ namespace dotnet.core.thegoldenfan.Services
             if (prochain != null)
             {
                 string aff = System.Net.WebUtility.HtmlEncode(prochain.Affiche);
-                string libelle = aDejaJoue ? "Modifie ton prono" : "Fais tes pronos";
+                string libelle = aDejaJoue ? "Je modifie mon prono" : "Je fais mes pronos";
 
                 blocProchain =
                     BlocMatchHtml(aff, "Les pronos ferment " + prochain.ClotureEnClair)
@@ -296,30 +296,25 @@ namespace dotnet.core.thegoldenfan.Services
             string contenu =
                 PARA + "Salut " + nom + ",</p>"
 
-              + PARA + "Tu viens de rejoindre YouProno, un terrain de jeu o&ugrave; le match se "
-              + "d&eacute;roule plusieurs heures avant le coup d'envoi. Quelle compo va aligner "
-              + "Enrique ? Qui aura le contr&ocirc;le du jeu ? Le match sera-t-il ferm&eacute; ou "
-              + "en mode box to box ? La rencontre sera-t-elle engag&eacute;e ? Le jeu passera-t-il "
-              + "par l'axe ou les ailes ? Et surtout qui va gagner ?</p>"
+              + PARA + "Un supporter &eacute;tait persuad&eacute; qu'Enrique allait faire tourner. "
+              + "Un autre voyait une large victoire. Et puis il y a celui qui avait devin&eacute; "
+              + "que le match serait engag&eacute;. Tous les supporters jouent le match avant le "
+              + "match, et d&eacute;sormais on saura qui avait raison.</p>"
 
-              + PARA + "&Agrave; toi d'anticiper jusqu'&agrave; 2 heures avant le coup d'envoi. "
-              + "Quelques minutes apr&egrave;s la fin du match, tes pr&eacute;dictions sont "
-              + "compar&eacute;es aux stats officielles pour te donner une note.</p>"
+              + PARA + "Sur YouProno, tu fais tes pr&eacute;dictions jusqu'&agrave; 2 heures avant "
+              + "le coup d'envoi, et &agrave; la fin du match elles sont compar&eacute;es aux stats "
+              + "officielles pour te donner une note.</p>"
 
               + blocProchain
 
-              + PARA + "YouProno se joue entre experts du PSG et surtout entre amis. En jouant "
-              + "&agrave; plusieurs, tu as une revanche &agrave; prendre tous les trois jours. "
-              + "Invite-les sur WhatsApp, ta comp&eacute;tition de groupe se construira "
-              + "automatiquement.</p>"
+              + PARA + "YouProno est un jeu gratuit et sans publicit&eacute; qui se joue entre "
+              + "experts du PSG et surtout entre amis. Invite-les sur WhatsApp et ton groupe "
+              + "d'amis se cr&eacute;era automatiquement.</p>"
 
               + BoutonHtml("https://youprono.fr/#groups", "D&eacute;fie tes amis", true, true)
 
-              + PARA + "YouProno est un jeu gratuit et sans publicit&eacute; r&eacute;alis&eacute; "
-              + "par des passionn&eacute;s.</p>"
-
               + "<p style=\"font-family:" + POLICE + ";font-size:16px;line-height:1.7;"
-              + "color:" + C_OR + ";margin:22px 0 0;font-weight:bold;\">Allez Paris</p>";
+              + "color:" + C_OR + ";margin:22px 0 0;font-weight:bold;\">Bons pronos et allez Paris</p>";
 
             string corps = CadreHtml("Bienvenue", contenu, lienStop);
 
@@ -327,18 +322,19 @@ namespace dotnet.core.thegoldenfan.Services
             // HTML est un signal de campagne : les vrais messages portent les deux.
             string texteBrut =
                 "Salut " + pseudo + ",\n\n"
-              + "Tu viens de rejoindre YouProno, un terrain de jeu ou le match se deroule plusieurs heures "
-              + "avant le coup d'envoi. Quelle compo va aligner Enrique ? Qui aura le controle du jeu ? Le match sera-t-il ferme "
-              + "ou en mode box to box ? La rencontre sera-t-elle engagee ? Le jeu passera-t-il par l'axe "
-              + "ou les ailes ? Et surtout qui va gagner ?\n\n"
-              + "A toi d'anticiper jusqu'a 2 heures avant le coup d'envoi. Quelques minutes apres la fin du "
-              + "match, tes predictions sont comparees aux stats officielles pour te donner une note.\n\n"
+              + "Un supporter etait persuade qu'Enrique allait faire tourner. Un autre voyait une "
+              + "large victoire. Et puis il y a celui qui avait devine que le match serait engage. "
+              + "Tous les supporters jouent le match avant le match, et desormais on saura qui "
+              + "avait raison.\n\n"
+              + "Sur YouProno, tu fais tes predictions jusqu'a 2 heures avant le coup d'envoi, et "
+              + "a la fin du match elles sont comparees aux stats officielles pour te donner une "
+              + "note.\n\n"
               + blocProchainTexte
-              + "YouProno se joue entre experts du PSG et surtout entre amis. En jouant a plusieurs, tu as "
-              + "une revanche a prendre tous les trois jours. Defie tes amis et invite-les sur WhatsApp, ta "
-              + "competition de groupe se construira automatiquement : https://youprono.fr/#groups\n\n"
-              + "YouProno est un jeu gratuit et sans publicite realise par des passionnes.\n\n"
-              + "Allez Paris\n\n"
+              + "YouProno est un jeu gratuit et sans publicite qui se joue entre experts du PSG "
+              + "et surtout entre amis. Invite-les sur WhatsApp et ton groupe d'amis se creera "
+              + "automatiquement : "
+              + "https://youprono.fr/#groups\n\n"
+              + "Bons pronos et allez Paris\n\n"
               + "@lepsgdantoine\n\n"
               + "---\n"
               + "Ne plus recevoir de rappel avant match : " + lienStop;
@@ -348,7 +344,7 @@ namespace dotnet.core.thegoldenfan.Services
                 sender = new { name = "YouProno", email = expediteur },
                 to = new[] { new { email = adresse } },
                 replyTo = new { email = expediteur, name = "YouProno" },
-                subject = "Bienvenue sur YouProno",
+                subject = "Bienvenue sur ton nouveau terrain de jeu",
                 htmlContent = corps,
                 textContent = texteBrut,
                 // Exige par Google et Yahoo depuis 2024 sur tout envoi groupe.
