@@ -326,44 +326,27 @@ namespace dotnet.core.thegoldenfan.Services
             // facon de s'en aller.
             string lienStop = "https://youprono.fr/#stop/" + userId.ToString();
 
-            // Le prochain match, quand il y en a un d'ouvert. Le bouton pousse a
-            // jouer ; celui qui a deja pronostique est invite a relire son prono.
-            string blocProchain = "";
-            string blocProchainTexte = "";
-            if (prochain != null)
-            {
-                string aff = System.Net.WebUtility.HtmlEncode(prochain.Affiche);
-                string libelle = aDejaJoue ? "Je modifie mon prono" : "Je fais mes pronos";
-
-                blocProchain =
-                    BlocMatchHtml(aff, "Les pronos ferment " + prochain.ClotureEnClair)
-                  + BoutonHtml("https://youprono.fr", libelle, false, false);
-
-                blocProchainTexte =
-                    "Prochain match : " + prochain.Affiche + ". Les pronos ferment "
-                  + prochain.ClotureEnClair + ".\n"
-                  + "https://youprono.fr\n\n";
-            }
+            // Ce message ne dit qu'une chose : bienvenue, et voila l'esprit du jeu.
+            // Ni affiche du prochain match, ni bouton : le joueur vient de s'inscrire,
+            // il est deja dans le jeu. Le rappel du matin de match s'occupe de le
+            // faire jouer, chacun son role.
 
             string contenu =
-                PARA + "Salut " + nom + ",</p>"
+                "<p style=\"font-family:" + POLICE + ";font-size:17px;line-height:1.7;"
+              + "color:" + C_OR + ";margin:0 0 16px;font-weight:bold;\">Bienvenue "
+              + nom + ",</p>"
 
               + PARA + "Un supporter &eacute;tait persuad&eacute; qu'Enrique allait faire tourner. "
-              + "Un autre voyait une large victoire. Et puis il y a celui qui avait devin&eacute; "
-              + "que le match serait engag&eacute;. Tous les supporters jouent le match avant le "
-              + "match, et d&eacute;sormais on saura qui avait raison.</p>"
+              + "Un autre voyait une large victoire parisienne. Et puis il y a celui qui avait "
+              + "devin&eacute; que le match serait engag&eacute;. Tout le monde avait raison et "
+              + "personne n'avait tort. D&eacute;sormais nous pouvons savoir qui avait vu juste.</p>"
 
               + PARA + "Sur YouProno, tu fais tes pr&eacute;dictions jusqu'&agrave; 2 heures avant "
-              + "le coup d'envoi, et &agrave; la fin du match elles sont compar&eacute;es aux stats "
-              + "officielles pour te donner une note.</p>"
+              + "le coup d'envoi et elles seront compar&eacute;es aux stats officielles juste "
+              + "apr&egrave;s la fin du match pour te donner une note.</p>"
 
-              + blocProchain
-
-              + PARA + "YouProno est un jeu gratuit et sans publicit&eacute; qui se joue entre "
-              + "experts du PSG et surtout entre amis. Invite-les sur WhatsApp et ton groupe "
-              + "d'amis se cr&eacute;era automatiquement.</p>"
-
-              + BoutonHtml("https://youprono.fr/#groups", "D&eacute;fie tes amis", true, true)
+              + PARA + "YouProno est un jeu gratuit et sans publicit&eacute; cr&eacute;&eacute; "
+              + "par des supporters du PSG depuis de longues ann&eacute;es.</p>"
 
               + "<p style=\"font-family:" + POLICE + ";font-size:16px;line-height:1.7;"
               + "color:" + C_OR + ";margin:22px 0 0;font-weight:bold;\">Bons pronos et allez Paris</p>";
@@ -373,19 +356,16 @@ namespace dotnet.core.thegoldenfan.Services
             // La version texte du meme message. Un courriel qui n'existe qu'en
             // HTML est un signal de campagne : les vrais messages portent les deux.
             string texteBrut =
-                "Salut " + pseudo + ",\n\n"
+                "Bienvenue " + pseudo + ",\n\n"
               + "Un supporter etait persuade qu'Enrique allait faire tourner. Un autre voyait une "
-              + "large victoire. Et puis il y a celui qui avait devine que le match serait engage. "
-              + "Tous les supporters jouent le match avant le match, et desormais on saura qui "
-              + "avait raison.\n\n"
-              + "Sur YouProno, tu fais tes predictions jusqu'a 2 heures avant le coup d'envoi, et "
-              + "a la fin du match elles sont comparees aux stats officielles pour te donner une "
-              + "note.\n\n"
-              + blocProchainTexte
-              + "YouProno est un jeu gratuit et sans publicite qui se joue entre experts du PSG "
-              + "et surtout entre amis. Invite-les sur WhatsApp et ton groupe d'amis se creera "
-              + "automatiquement : "
-              + "https://youprono.fr/#groups\n\n"
+              + "large victoire parisienne. Et puis il y a celui qui avait devine que le match "
+              + "serait engage. Tout le monde avait raison et personne n'avait tort. Desormais "
+              + "nous pouvons savoir qui avait vu juste.\n\n"
+              + "Sur YouProno, tu fais tes predictions jusqu'a 2 heures avant le coup d'envoi et "
+              + "elles seront comparees aux stats officielles juste apres la fin du match pour te "
+              + "donner une note.\n\n"
+              + "YouProno est un jeu gratuit et sans publicite cree par des supporters du PSG "
+              + "depuis de longues annees.\n\n"
               + "Bons pronos et allez Paris\n\n"
               + "@lepsgdantoine\n\n"
               + "---\n"
