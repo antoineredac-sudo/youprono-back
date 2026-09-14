@@ -1,4 +1,4 @@
-using dotnet.core.thegoldenfan.Dbs;
+﻿using dotnet.core.thegoldenfan.Dbs;
 using dotnet.core.utils;
 using dotnet.core.utils.Helpers;
 using Microsoft.EntityFrameworkCore;
@@ -59,13 +59,18 @@ namespace dotnet.core.thegoldenfan.Services
         public const int ClotureAvantHeures = 2;
 
         // --- Les recompenses de groupe ---
-        // Seuils de points cumules donnant droit a chaque metal, du bronze au diamant.
-        private static readonly int[] MedalThresholds = { 15, 22, 29, 36, 43 };
-        // Ce que chaque metal apporte a la coupe.
-        private static readonly int[] MedalValues = { 3, 5, 7, 9, 11 };
-        private static readonly string[] MedalNames = { "Bronze", "Argent", "Or", "Platine", "Diamant" };
-        // Une coupe se remplit a 12 points. Le diamant vaut 11 : aucune coupe ne peut
-        // donc etre remplie en un seul mini-championnat.
+        // Cinq ballons plutot que cinq metaux : le football ne remet pas de medailles,
+        // il remet un ballon. La baudruche n'est pas un trophee, c'est ce qu'on
+        // recupere quand on n'en a pas gagne — elle se decroche en ayant simplement
+        // joue les cinq matchs (le plancher absolu est de 10 points) et elle ne pese
+        // qu'un point dans la coupe. Le cuir est la vraie premiere recompense.
+        private static readonly int[] MedalThresholds = { 12, 22, 29, 36, 43 };
+        // Ce que chaque ballon apporte a la coupe.
+        private static readonly int[] MedalValues = { 1, 5, 7, 9, 11 };
+        private static readonly string[] MedalNames =
+            { "Baudruche", "Cuir", "Bronze", "Argent", "Or" };
+        // Une coupe se remplit a 12 points. Le ballon d'or vaut 11 : aucune coupe ne
+        // peut donc etre remplie en un seul mini-championnat.
         private const int CupTarget = 12;
         // En dessous de trois membres, pas de medaille : un duel se felicite, il ne se
         // recompense pas.
@@ -1361,9 +1366,12 @@ namespace dotnet.core.thegoldenfan.Services
             public List<PodiumResult> Podiums { get; set; } = new();
 
             // --- Le verdict du match ---
-            // Le site compare la note du joueur a la mediane de tous les joueurs
-            // notes sur ce match, et cite sa meilleure ou sa pire categorie. Ici on
-            // ne fait que fournir les chiffres : les seuils et les phrases sont au site.
+            // La phrase est desormais ecrite ici, une fois pour toutes, et servie
+            // telle quelle au site comme au courriel du lendemain. Les chiffres qui
+            // suivent restent publies : ils alimentent l'affichage de la mediane et
+            // du rang, et permettent de verifier la phrase.
+            public string? Verdict { get; set; }
+
             public int ScoredCount { get; set; }
             public double MatchMedian { get; set; }
 
@@ -1375,6 +1383,117 @@ namespace dotnet.core.thegoldenfan.Services
             public double BestCategoryNote { get; set; }
             public string? WorstCategory { get; set; }
             public double WorstCategoryNote { get; set; }
+        }
+
+        // ===== LE VERDICT DU MATCH =====
+        // Une phrase selon la note, croisee avec la mediane des joueurs notes sur ce
+        // match : la meme note ne se lit pas pareil un soir de 6-1 et un soir de 2-0
+        // sans surprise. En dessous de MedianeMinJoueurs notes, la mediane ne veut
+        // rien dire et on s'en tient a une phrase neutre par tranche.
+        // Une seconde phrase cite la meilleure categorie (a partir de CategorieForte)
+        // quand la note est bonne, ou la pire (sous CategorieFaible) quand elle ne
+        // l'est pas. Jamais les deux.
+        // Les huit tranches et les textes sont d'Antoine, valides le 11 septembre 2026.
+        private const int MedianeMinJoueurs = 4;
+        private const double CategorieForte = 90;
+        private const double CategorieFaible = 40;
+        private const double VerdictBascule = 70;
+
+        private sealed class Tranche
+        {
+            public double Min;
+            public string Dessous = "";
+            public string Dessus = "";
+            public string Neutre = "";
+        }
+
+        // De la tranche la plus haute a la plus basse.
+        private static readonly Tranche[] Verdicts =
+        {
+            new() { Min = 90,
+                Dessous = "Plus de 90 et pas dans la moitie haute : le soir ou tout le monde avait vu le match avant qu'il se joue.",
+                Dessus  = "Tu as vu le match avant qu'il se joue. Enrique devrait t'appeler.",
+                Neutre  = "Tu as vu le match avant qu'il se joue. Enrique devrait t'appeler." },
+            new() { Min = 85,
+                Dessous = "Grand soir pour toi, plus grand encore pour les autres. Le match etait ecrit d'avance.",
+                Dessus  = "Grand soir, et la majorite en est loin.",
+                Neutre  = "Grand soir." },
+            new() { Min = 80,
+                Dessous = "Note d'expert, dans un match d'experts. Ce soir, 80 ne suffisait pas.",
+                Dessus  = "Note d'expert, et peu de supporters voient le match aussi juste.",
+                Neutre  = "Note d'expert. Peu de supporters voient le match aussi juste." },
+            new() { Min = 75,
+                Dessous = "Solide, et pourtant dans la moitie basse : le match etait lisible, tout le monde l'a lu.",
+                Dessus  = "Solide, et au-dessus du lot. Le match etait difficile a lire, tu l'as lu.",
+                Neutre  = "Solide. Tu as lu le match." },
+            new() { Min = 70,
+                Dessous = "Pas mal defendu, mais les autres ont mieux lu le match.",
+                Dessus  = "Bien defendu. Ce n'etait pas un match facile a lire, tu l'as mieux lu que la plupart.",
+                Neutre  = "Tu ne t'es pas mal defendu. Il manquait un titulaire ou un but pour changer de categorie." },
+            new() { Min = 60,
+                Dessous = "Peut mieux faire. La moitie des supporters t'a devance.",
+                Dessus  = "Note moyenne, soiree difficile : tu finis dans la bonne moitie.",
+                Neutre  = "Dans la moyenne des supporters. Ni la tribune, ni le banc." },
+            new() { Min = 50,
+                Dessous = "Tu as vu le match de loin. Et la plupart l'ont vu de plus pres.",
+                Dessus  = "Mauvaise note, mais la majorite a fait pire. Ce soir, 55 c'etait voir juste.",
+                Neutre  = "Tu as vu le match de loin." },
+            new() { Min = double.MinValue,
+                Dessous = "Naufrage. Le PSG a joué un match, tu en avais pronostiqué un autre.",
+                Dessus  = "Naufrage collectif. Ta note est mauvaise, celle de la majorité est pire : personne n'avait vu ce match venir.",
+                Neutre  = "Naufrage. Le PSG a joué un match, tu en avais pronostiqué un autre." }
+        };
+
+        private static readonly Dictionary<string, string> CategorieForteTexte = new()
+        {
+            { "composition", "Et tu as été exceptionnel en compo." },
+            { "score",       "Et tu avais le score." },
+            { "possession",  "Et tu avais la possession au pourcent près." },
+            { "shots",       "Et tu avais les tirs." },
+            { "fouls",       "Et tu avais les fautes." },
+            { "crosses",     "Et tu avais les centres." }
+        };
+
+        private static readonly Dictionary<string, string> CategorieFaibleTexte = new()
+        {
+            { "composition", "C'est la compo qui t'a coulé." },
+            { "score",       "C'est le score qui t'a coulé." },
+            { "possession",  "C'est la possession qui t'a coulé." },
+            { "shots",       "Ce sont les tirs qui t'ont coulé." },
+            { "fouls",       "Ce sont les fautes qui t'ont coulé." },
+            { "crosses",     "Ce sont les centres qui t'ont coulé." }
+        };
+
+        private static string EcrireVerdict(MatchEventsResult d)
+        {
+            if (d == null || !d.HasScore) { return ""; }
+
+            var tranche = Verdicts.FirstOrDefault(v => d.Score >= v.Min) ?? Verdicts[^1];
+
+            bool medianeUtile = d.ScoredCount >= MedianeMinJoueurs;
+            string phrase = !medianeUtile ? tranche.Neutre
+                          : (d.Score >= d.MatchMedian ? tranche.Dessus : tranche.Dessous);
+
+            // Le complement : une seule categorie citee, jamais les deux.
+            string complement = "";
+            if (d.Score >= VerdictBascule)
+            {
+                if (!string.IsNullOrEmpty(d.BestCategory) && d.BestCategoryNote >= CategorieForte
+                    && CategorieForteTexte.TryGetValue(d.BestCategory, out var fort))
+                {
+                    complement = fort;
+                    // La phrase de base a deja son « et » : le complement lache le sien.
+                    if (phrase.Contains(", et ")) { complement = complement.Replace("Et tu", "Tu"); }
+                }
+            }
+            else
+            {
+                if (!string.IsNullOrEmpty(d.WorstCategory) && d.WorstCategoryNote < CategorieFaible
+                    && CategorieFaibleTexte.TryGetValue(d.WorstCategory, out var faible))
+                { complement = faible; }
+            }
+
+            return string.IsNullOrEmpty(complement) ? phrase : phrase + " " + complement;
         }
 
         // Mediane d'une liste de notes : la valeur du milieu, ou la moyenne des deux
@@ -1538,6 +1657,11 @@ namespace dotnet.core.thegoldenfan.Services
             }
 
             result.Podiums = result.Podiums.OrderBy(o => o.Rank).ToList();
+
+            // La phrase du verdict, ecrite en dernier : elle a besoin de la note, de
+            // la mediane et des categories, tous renseignes plus haut.
+            result.Verdict = EcrireVerdict(result);
+
             return result;
         }
 
