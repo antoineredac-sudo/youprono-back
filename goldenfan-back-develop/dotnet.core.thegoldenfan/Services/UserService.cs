@@ -749,7 +749,7 @@ namespace dotnet.core.thegoldenfan.Services
                 sender = new { name = "YouProno", email = expediteur },
                 to = new[] { new { email = adresse } },
                 replyTo = new { email = expediteur, name = "YouProno" },
-                subject = "Jour de match : " + affiche,
+                subject = "C'est jour de prono",
                 htmlContent = corps,
                 textContent = texteBrut,
                 headers = new Dictionary<string, string>
