@@ -208,18 +208,6 @@ namespace dotnet.core.thegoldenfan.Services
         {
             try
             {
-                // L'equipe du jeu : une seule pour l'instant, le PSG. On la
-                // retrouve par son nom plutot que de la faire remonter depuis le
-                // formulaire d'inscription, qui n'a pas a la connaitre.
-                var equipe = await dbContext.Teams
-                    .AsNoTracking()
-                    .Where(w => w.Name.StartsWith("Paris"))
-                    .Select(s => s.Id)
-                    .FirstOrDefaultAsync();
-                if (string.IsNullOrEmpty(equipe)) { return; }
-
-                var prochain = await ProchainMatchOuvertAsync(equipe);
-
                 // La tentative est comptee AVANT l'envoi : si Brevo leve une
                 // exception, le compteur a quand meme avance et les rattrapages
                 // savent ou ils en sont.
@@ -228,7 +216,7 @@ namespace dotnet.core.thegoldenfan.Services
                 enBase.WelcomeTries++;
                 await dbContext.SaveChangesAsync();
 
-                await EnvoyerBienvenueAsync(adresse, pseudo, userId, prochain, false);
+                await EnvoyerBienvenueAsync(adresse, pseudo, userId);
 
                 // La marque n'est posee qu'une fois l'envoi parti. Si Brevo a
                 // refuse, elle reste vide et le rattrapage reprendra ce joueur.
@@ -248,21 +236,13 @@ namespace dotnet.core.thegoldenfan.Services
         // qui s'inscrit a vingt heures ne doit pas attendre le lendemain matin.
         // Le rappel avant match et le courriel de resultat, eux, gardent leur
         // creneau de 8 h a 11 h, heure de Paris.
+        // teamId n'est plus utilise depuis que le message ne parle plus du prochain
+        // match. Il reste dans la signature parce qu'il vient de l'adresse appelee
+        // par UptimeRobot : le retirer obligerait a changer cette adresse et le
+        // reglage du service de surveillance.
         public async Task<WelcomeResult> WelcomeAsync(string teamId)
         {
             var result = new WelcomeResult();
-
-            var prochain = await ProchainMatchOuvertAsync(teamId);
-
-            // Ceux qui ont deja pronostique sur ce match : on ne leur demande pas
-            // de faire ce qu'ils viennent de faire.
-            var dejaJoue = prochain == null
-                ? new List<Guid>()
-                : await dbContext.UserMatches
-                    .Where(w => w.MatchId.Equals(prochain.MatchId) && w.TeamId.Equals(teamId))
-                    .Select(s => s.UserId)
-                    .Distinct()
-                    .ToListAsync();
 
             // Tous ceux qui n'ont jamais recu le message. Un inscrit de la nuit
             // ou d'un jour ou la route n'a pas ete appelee n'est pas oublie.
@@ -282,8 +262,7 @@ namespace dotnet.core.thegoldenfan.Services
                     user.WelcomeTries++;
                     await dbContext.SaveChangesAsync();
 
-                    await EnvoyerBienvenueAsync(user.Email!, user.DisplayName ?? "", user.Id,
-                        prochain, dejaJoue.Contains(user.Id));
+                    await EnvoyerBienvenueAsync(user.Email!, user.DisplayName ?? "", user.Id);
 
                     // Note apres chaque envoi : une interruption ne fait plus
                     // perdre que le message en cours.
@@ -313,8 +292,7 @@ namespace dotnet.core.thegoldenfan.Services
             return result;
         }
 
-        private static async Task EnvoyerBienvenueAsync(string adresse, string pseudo, Guid userId,
-            ProchainMatch? prochain, bool aDejaJoue)
+        private static async Task EnvoyerBienvenueAsync(string adresse, string pseudo, Guid userId)
         {
             string cle = Environment.GetEnvironmentVariable("BREVO_API_KEY") ?? "";
             if (string.IsNullOrWhiteSpace(cle)) { return; }
@@ -582,47 +560,6 @@ namespace dotnet.core.thegoldenfan.Services
                  + " à " + d.ToString("HH'h'mm");
         }
 
-        // Le prochain match dont les pronostics sont encore ouverts. Sert au bloc
-        // du courriel de bienvenue. Null s'il n'y en a pas.
-        public sealed class ProchainMatch
-        {
-            public string MatchId { get; set; } = "";
-            public string Affiche { get; set; } = "";
-            public string ClotureEnClair { get; set; } = "";
-        }
-
-        private async Task<ProchainMatch?> ProchainMatchOuvertAsync(string teamId)
-        {
-            DateTime maintenantParis = TimeZoneInfo.ConvertTimeFromUtc(
-                DateTime.UtcNow, GroupService.ParisTimeZoneInfo);
-
-            var matchs = await dbContext.Matches
-                .Include(i => i.HomeTeam).ThenInclude(t => t.Team)
-                .Include(i => i.AwayTeam).ThenInclude(t => t.Team)
-                .Where(w => (w.HomeTeam.TeamId.Equals(teamId) || w.AwayTeam.TeamId.Equals(teamId))
-                         && w.DateTime > maintenantParis)
-                .OrderBy(o => o.DateTime)
-                .Take(3)
-                .ToListAsync();
-
-            foreach (var m in matchs)
-            {
-                DateTime cloture = m.DateTime.AddHours(-GroupService.ClotureAvantHeures);
-                if (cloture <= maintenantParis) { continue; }
-
-                string domicile = NomEquipe(m.HomeTeam);
-                string exterieur = NomEquipe(m.AwayTeam);
-                bool psgRecoit = m.HomeTeam.TeamId.Equals(teamId);
-
-                return new ProchainMatch
-                {
-                    MatchId = m.Id,
-                    Affiche = (psgRecoit ? "PSG" : domicile) + " - " + (psgRecoit ? exterieur : "PSG"),
-                    ClotureEnClair = DateEnClair(cloture)
-                };
-            }
-            return null;
-        }
 
         public class ReminderResult
         {
