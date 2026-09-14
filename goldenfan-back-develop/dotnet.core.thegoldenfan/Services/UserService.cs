@@ -966,8 +966,8 @@ namespace dotnet.core.thegoldenfan.Services
               + "margin-top:12px;font-weight:bold;\">" + aff + "</div>"
               + "</td></tr></table>"
 
-              + PARA + "N'ayant pas particip&eacute; au dernier match, tu obtiens la meilleure "
-              + "note du tiers le plus faible des participants. Elle entre dans ton Coef Expert "
+              + PARA + "N'ayant pas particip&eacute; au dernier match, on t'attribue une note "
+              + "en dessous de la moyenne des participants. Elle entre dans ton Coef Expert "
               + "comme une vraie note.</p>"
 
               + PARA + "Les pronos pour le prochain match sont ouverts, tu vas pouvoir prendre "
@@ -982,8 +982,8 @@ namespace dotnet.core.thegoldenfan.Services
 
             string texteBrut =
                 "Salut " + pseudo + ",\n\n"
-              + "N'ayant pas participe au dernier match (" + affiche + "), tu obtiens la "
-              + "meilleure note du tiers le plus faible des participants : " + noteTexte
+              + "N'ayant pas participe au dernier match (" + affiche + "), on t'attribue une "
+              + "note en dessous de la moyenne des participants : " + noteTexte
               + ". Elle entre dans ton Coef Expert comme une vraie note.\n\n"
               + "Les pronos pour le prochain match sont ouverts, tu vas pouvoir prendre ta "
               + "revanche.\n\n"
