@@ -1488,13 +1488,31 @@ namespace dotnet.core.thegoldenfan.Services
         private static string EcrireVerdict(MatchEventsResult d, Guid userId, string matchId)
         {
             if (d == null || !d.HasScore) { return ""; }
+            return VerdictTexte(d.Score, d.MatchMedian, d.ScoredCount,
+                d.BestCategory, d.BestCategoryNote, d.WorstCategory, d.WorstCategoryNote,
+                userId, matchId);
+        }
 
-            var tranche = Verdicts.FirstOrDefault(v => d.Score >= v.Min) ?? Verdicts[^1];
+        // La meme phrase, fabriquee a partir de nombres bruts. C'est cette version
+        // qu'utilise le courriel du lendemain : elle ne touche ni a la base, ni au
+        // classement general, ni aux groupes — trois cents appels un matin de semaine
+        // ne coutent donc rien.
+        public static string VerdictTexte(double score, double mediane, int scoredCount,
+            string? bestCategory, double bestCategoryNote,
+            string? worstCategory, double worstCategoryNote,
+            Guid userId, string matchId)
+        {
+            var tranche = Verdicts.FirstOrDefault(v => score >= v.Min) ?? Verdicts[^1];
 
-            bool medianeUtile = d.ScoredCount >= MedianeMinJoueurs;
+            bool medianeUtile = scoredCount >= MedianeMinJoueurs;
             var choix = !medianeUtile ? tranche.Neutre
-                      : (d.Score >= d.MatchMedian ? tranche.Dessus : tranche.Dessous);
+                      : (score >= mediane ? tranche.Dessus : tranche.Dessous);
             string phrase = Choisir(choix, userId, matchId);
+
+            string? d_BestCategory = bestCategory;
+            double d_BestCategoryNote = bestCategoryNote;
+            string? d_WorstCategory = worstCategory;
+            double d_WorstCategoryNote = worstCategoryNote;
 
             // Les complements ne dependent plus de la note globale. Une categorie
             // au-dessus de CategorieForte se felicite meme chez un joueur moyen ;
@@ -1504,12 +1522,12 @@ namespace dotnet.core.thegoldenfan.Services
             // qui prend des risques, et c'est exactement ce qu'un supporter dirait.
             var morceaux = new List<string> { phrase };
 
-            if (!string.IsNullOrEmpty(d.BestCategory) && d.BestCategoryNote >= CategorieForte
-                && CategorieForteTexte.TryGetValue(d.BestCategory, out var fort))
+            if (!string.IsNullOrEmpty(d_BestCategory) && d_BestCategoryNote >= CategorieForte
+                && CategorieForteTexte.TryGetValue(d_BestCategory, out var fort))
             { morceaux.Add(fort); }
 
-            if (!string.IsNullOrEmpty(d.WorstCategory) && d.WorstCategoryNote < CategorieFaible
-                && CategorieFaibleTexte.TryGetValue(d.WorstCategory, out var faible))
+            if (!string.IsNullOrEmpty(d_WorstCategory) && d_WorstCategoryNote < CategorieFaible
+                && CategorieFaibleTexte.TryGetValue(d_WorstCategory, out var faible))
             { morceaux.Add(faible); }
 
             return string.Join(" ", morceaux);
@@ -1517,7 +1535,7 @@ namespace dotnet.core.thegoldenfan.Services
 
         // Mediane d'une liste de notes : la valeur du milieu, ou la moyenne des deux
         // du milieu quand il y en a un nombre pair. 0 pour une liste vide.
-        private static double Mediane(List<double> notes)
+        public static double Mediane(List<double> notes)
         {
             if (notes == null || notes.Count == 0) { return 0; }
             var triees = notes.OrderBy(o => o).ToList();

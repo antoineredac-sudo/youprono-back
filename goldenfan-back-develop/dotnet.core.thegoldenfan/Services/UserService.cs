@@ -850,6 +850,26 @@ namespace dotnet.core.thegoldenfan.Services
                 .Select(s => new { s.UserId, Note = s.ResultTotal.Value })
                 .ToListAsync();
 
+            // Le verdict, celui-la meme qui s'affiche sur l'ecran des resultats. On
+            // charge en une fois les notes par categorie de tout le monde, puis on
+            // fabrique la phrase joueur par joueur, sans retoucher la base.
+            var mediane = GroupService.Mediane(notes.Select(s => s.Note).ToList());
+            int notesCount = notes.Count;
+
+            var parCategorie = await dbContext.UserMatches
+                .Where(w => w.MatchId.Equals(match.Id) && w.TeamId.Equals(teamId) && w.ResultTotal.HasValue)
+                .Select(s => new
+                {
+                    s.UserId,
+                    Composition = s.ResultTeamCompositionFormula,
+                    Score = s.ResultTeamScoreFormula,
+                    Possession = s.ResultTeamPossessionFormula,
+                    Shots = s.ResultTeamShotsFormula,
+                    Fouls = s.ResultTeamFoulsFormula,
+                    Crosses = s.ResultTeamCrossesFormula
+                })
+                .ToListAsync();
+
             var ids = notes.Select(s => s.UserId).ToList();
 
             var destinataires = await dbContext.Users
@@ -866,8 +886,36 @@ namespace dotnet.core.thegoldenfan.Services
                 {
                     double note = notes.Where(w => w.UserId.Equals(user.Id)).Select(s => s.Note).FirstOrDefault();
 
+                    // Sa meilleure et sa pire categorie, comme sur l'ecran des resultats.
+                    string? meilleure = null, pire = null;
+                    double meilleureNote = 0, pireNote = 0;
+                    var sien = parCategorie.FirstOrDefault(f => f.UserId.Equals(user.Id));
+                    if (sien != null)
+                    {
+                        var cats = new List<KeyValuePair<string, double?>>
+                        {
+                            new("composition", sien.Composition),
+                            new("score", sien.Score),
+                            new("possession", sien.Possession),
+                            new("shots", sien.Shots),
+                            new("fouls", sien.Fouls),
+                            new("crosses", sien.Crosses)
+                        };
+                        var connues = cats.Where(c => c.Value.HasValue).ToList();
+                        if (connues.Count > 0)
+                        {
+                            var haut = connues.OrderByDescending(o => o.Value!.Value).First();
+                            var bas = connues.OrderBy(o => o.Value!.Value).First();
+                            meilleure = haut.Key; meilleureNote = Math.Round(haut.Value!.Value, 3);
+                            pire = bas.Key; pireNote = Math.Round(bas.Value!.Value, 3);
+                        }
+                    }
+
+                    string verdict = GroupService.VerdictTexte(note, mediane, notesCount,
+                        meilleure, meilleureNote, pire, pireNote, user.Id, match.Id);
+
                     await EnvoyerResultatAsync(user.Email!, user.DisplayName ?? "", user.Id,
-                        result.Affiche, note, joursDepuis == 1);
+                        result.Affiche, note, joursDepuis == 1, verdict);
 
                     user.LastResultMatchId = match.Id;
                     await dbContext.SaveChangesAsync();
@@ -884,7 +932,7 @@ namespace dotnet.core.thegoldenfan.Services
         }
 
         private static async Task EnvoyerResultatAsync(string adresse, string pseudo, Guid userId,
-            string affiche, double note, bool hier)
+            string affiche, double note, bool hier, string verdict)
         {
             string cle = Environment.GetEnvironmentVariable("BREVO_API_KEY") ?? "";
             if (string.IsNullOrWhiteSpace(cle)) { return; }
@@ -917,10 +965,21 @@ namespace dotnet.core.thegoldenfan.Services
               + "margin-top:12px;font-weight:bold;\">" + aff + "</div>"
               + "</td></tr></table>"
 
-              + PARA + ouverture + " cette note. D&eacute;couvre ta nouvelle position aux "
-              + "classements et le prochain match, d&eacute;j&agrave; ouvert aux pronos.</p>"
+              // Le verdict, dans un encadre a filet dore : c'est lui qu'on lit, pas
+              // la note, qui est deja affichee en grand au-dessus.
+              + (string.IsNullOrEmpty(verdict) ? ""
+                 : "<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" "
+                   + "style=\"margin:0 0 20px;\"><tr>"
+                   + "<td style=\"border-left:3px solid " + C_OR + ";padding:2px 0 2px 14px;\">"
+                   + "<div style=\"font-family:" + POLICE + ";font-size:16px;line-height:1.6;"
+                   + "color:" + C_TEXTE + ";font-weight:bold;\">"
+                   + System.Net.WebUtility.HtmlEncode(verdict) + "</div>"
+                   + "</td></tr></table>")
 
-              + BoutonHtml("https://youprono.fr", "D&eacute;couvre ton r&eacute;sultat", false, false)
+              + PARA + "D&eacute;couvre ta nouvelle position au classement et le compte &agrave; "
+              + "rebours des pronos pour le prochain match.</p>"
+
+              + BoutonHtml("https://youprono.fr/#ranking", "Mon classement", false, false)
 
               + "<p style=\"font-family:" + POLICE + ";font-size:16px;line-height:1.7;"
               + "color:" + C_OR + ";margin:22px 0 0;font-weight:bold;\">Allez Paris</p>";
@@ -929,10 +988,11 @@ namespace dotnet.core.thegoldenfan.Services
 
             string texteBrut =
                 "Salut " + pseudo + ",\n\n"
-              + ouverture + " la note de " + noteTexte + " sur le match " + affiche
-              + ". Decouvre ta nouvelle position aux classements et le prochain match qui est deja "
-              + "ouvert aux pronos.\n\n"
-              + "https://youprono.fr\n\n"
+              + ouverture + " la note de " + noteTexte + " sur le match " + affiche + ".\n\n"
+              + (string.IsNullOrEmpty(verdict) ? "" : verdict + "\n\n")
+              + "Decouvre ta nouvelle position au classement et le compte a rebours des pronos "
+              + "pour le prochain match.\n\n"
+              + "https://youprono.fr/#ranking\n\n"
               + "Allez Paris\n\n"
               + "@lepsgdantoine\n\n"
               + "---\n"
