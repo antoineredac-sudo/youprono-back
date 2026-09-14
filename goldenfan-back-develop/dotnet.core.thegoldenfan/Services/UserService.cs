@@ -195,15 +195,62 @@ namespace dotnet.core.thegoldenfan.Services
             public List<string> Pseudos { get; set; } = new();
         }
 
+        // L'envoi immediat, declenche par l'inscription. Il est ATTENDU : lancer la
+        // tache en arriere-plan reviendrait a travailler avec une connexion a la base
+        // deja fermee, puisqu'elle vit le temps de la requete. Le joueur attend donc
+        // une demi-seconde de plus, une seule fois dans sa vie, au moment ou il vient
+        // de creer son compte.
+        // Rien ne remonte a lui en cas d'echec : WelcomeSentAt reste vide et le
+        // rattrapage appele par UptimeRobot reprendra ce joueur au passage suivant,
+        // puis au suivant, jusqu'a ce que ca passe. Le try/catch est large a dessein
+        // — une exception ici ne doit jamais empecher une inscription d'aboutir.
+        private async Task BienvenueImmediateAsync(Guid userId, string pseudo, string adresse)
+        {
+            try
+            {
+                // L'equipe du jeu : une seule pour l'instant, le PSG. On la
+                // retrouve par son nom plutot que de la faire remonter depuis le
+                // formulaire d'inscription, qui n'a pas a la connaitre.
+                var equipe = await dbContext.Teams
+                    .AsNoTracking()
+                    .Where(w => w.Name.StartsWith("Paris"))
+                    .Select(s => s.Id)
+                    .FirstOrDefaultAsync();
+                if (string.IsNullOrEmpty(equipe)) { return; }
+
+                var prochain = await ProchainMatchOuvertAsync(equipe);
+
+                // La tentative est comptee AVANT l'envoi : si Brevo leve une
+                // exception, le compteur a quand meme avance et les rattrapages
+                // savent ou ils en sont.
+                var enBase = await dbContext.Users.FirstOrDefaultAsync(w => w.Id.Equals(userId));
+                if (enBase == null) { return; }
+                enBase.WelcomeTries++;
+                await dbContext.SaveChangesAsync();
+
+                await EnvoyerBienvenueAsync(adresse, pseudo, userId, prochain, false);
+
+                // La marque n'est posee qu'une fois l'envoi parti. Si Brevo a
+                // refuse, elle reste vide et le rattrapage reprendra ce joueur.
+                if (enBase.WelcomeSentAt == null)
+                {
+                    enBase.WelcomeSentAt = DateTime.UtcNow;
+                    await dbContext.SaveChangesAsync();
+                }
+            }
+            catch { /* le rattrapage prendra le relais */ }
+        }
+
+        // Le rattrapage de la bienvenue, appele en continu par UptimeRobot. Depuis
+        // que le message part des l'inscription, cette route ne sert plus qu'a
+        // ramasser les envois qui ont echoue — Brevo indisponible, coupure reseau,
+        // quota du jour atteint. Elle n'a donc plus de creneau horaire : quelqu'un
+        // qui s'inscrit a vingt heures ne doit pas attendre le lendemain matin.
+        // Le rappel avant match et le courriel de resultat, eux, gardent leur
+        // creneau de 8 h a 11 h, heure de Paris.
         public async Task<WelcomeResult> WelcomeAsync(string teamId)
         {
             var result = new WelcomeResult();
-
-            DateTime maintenantParis = TimeZoneInfo.ConvertTimeFromUtc(
-                DateTime.UtcNow, GroupService.ParisTimeZoneInfo);
-
-            if (maintenantParis.Hour < RAPPEL_HEURE_DEBUT || maintenantParis.Hour >= RAPPEL_HEURE_FIN)
-            { return result; }
 
             var prochain = await ProchainMatchOuvertAsync(teamId);
 
@@ -220,7 +267,8 @@ namespace dotnet.core.thegoldenfan.Services
             // Tous ceux qui n'ont jamais recu le message. Un inscrit de la nuit
             // ou d'un jour ou la route n'a pas ete appelee n'est pas oublie.
             var nouveaux = await dbContext.Users
-                .Where(w => w.WelcomeSentAt == null && w.Email != null && w.Email != "")
+                .Where(w => w.WelcomeSentAt == null && w.Email != null && w.Email != ""
+                         && w.WelcomeTries < BIENVENUE_ESSAIS_MAX)
                 .ToListAsync();
 
             if (System.Threading.Interlocked.CompareExchange(ref enCoursBienvenue, 1, 0) != 0)
@@ -230,6 +278,10 @@ namespace dotnet.core.thegoldenfan.Services
             {
                 foreach (var user in nouveaux)
                 {
+                    // Comptee avant l'envoi, pour la meme raison que plus haut.
+                    user.WelcomeTries++;
+                    await dbContext.SaveChangesAsync();
+
                     await EnvoyerBienvenueAsync(user.Email!, user.DisplayName ?? "", user.Id,
                         prochain, dejaJoue.Contains(user.Id));
 
@@ -502,6 +554,13 @@ namespace dotnet.core.thegoldenfan.Services
             + PiedHtml(lienStop)
             + "</table></div>";
         }
+
+        // Nombre maximal de tentatives d'envoi du courriel de bienvenue : l'envoi
+        // immediat, plus deux rattrapages. Un incident passager — coupure reseau,
+        // Brevo indisponible quelques minutes — est regle bien avant. Au-dela,
+        // c'est une adresse que Brevo refuse et refusera toujours : insister ne
+        // ferait qu'encombrer chaque passage.
+        private const int BIENVENUE_ESSAIS_MAX = 3;
 
         // Les bornes du pseudo. Le site porte les memes valeurs sur son champ.
         public const int PSEUDO_MIN = 2;
@@ -1319,6 +1378,13 @@ namespace dotnet.core.thegoldenfan.Services
             dbContext.Users.Add(newObj);
 
             await dbContext.SaveChangesAsync();
+
+            // La bienvenue part tout de suite. Si l'envoi echoue — Brevo
+            // indisponible, coupure reseau, quota du jour atteint — WelcomeSentAt
+            // reste vide et le rattrapage appele par UptimeRobot reprendra ce
+            // joueur au passage suivant, puis au suivant, jusqu'a ce que ca passe.
+            await BienvenueImmediateAsync(newObj.Id, newObj.DisplayName ?? "", newObj.Email!);
+
             return TokenHelper.GenerateToken(newObj.Id.ToString(), newObj.DisplayName, GetRole(normalized));
         }
 
