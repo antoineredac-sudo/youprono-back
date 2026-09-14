@@ -1352,6 +1352,12 @@ namespace dotnet.core.thegoldenfan.Services
             public double Score { get; set; }
             public bool HasScore { get; set; }
 
+            // Le joueur n'a pas pronostique ce match, mais il etait inscrit avant la
+            // cloture : il ecope de la note de forfait, qui entre dans son coef
+            // expert. Le site et le courriel du lendemain la lui annoncent.
+            public bool IsForfait { get; set; }
+            public double ForfaitScore { get; set; }
+
             // Premiere note de sa vie : ne se produit qu'une fois.
             public bool IsFirstScoredMatch { get; set; }
 
@@ -1570,7 +1576,42 @@ namespace dotnet.core.thegoldenfan.Services
                 .ToListAsync();
 
             var laSienne = siennes.FirstOrDefault(f => f.MatchId.Equals(matchId));
-            if (laSienne == null) { return result; }
+            if (laSienne == null)
+            {
+                // Il n'a pas joue. S'il etait inscrit avant la cloture et que le
+                // match compte assez de participants, on lui annonce sa note de
+                // forfait plutot que de lui montrer un ecran vide.
+                var toutes = await dbContext.UserMatches
+                    .Where(w => w.MatchId.Equals(matchId) && w.TeamId.Equals(teamId)
+                             && w.ResultTotal.HasValue)
+                    .Select(s => s.ResultTotal!.Value)
+                    .ToListAsync();
+
+                var forfait = UserService.NoteDeForfait(toutes);
+                if (forfait == null) { return result; }
+
+                var leMatch = await dbContext.Matches
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(w => w.Id.Equals(matchId));
+                if (leMatch == null) { return result; }
+
+                DateTime clotureUtc = ParisToUtc(
+                    leMatch.DateTime.AddHours(-ClotureAvantHeures));
+
+                var inscrit = await dbContext.Users
+                    .AsNoTracking()
+                    .Where(w => w.Id.Equals(userId))
+                    .Select(s => s.DateCreated)
+                    .FirstOrDefaultAsync();
+
+                // Inscrit apres la cloture : rien a lui reprocher.
+                if (clotureUtc < inscrit) { return result; }
+
+                result.IsForfait = true;
+                result.ForfaitScore = Math.Round(forfait.Value, 3);
+                result.ScoredCount = toutes.Count;
+                return result;
+            }
 
             result.HasScore = true;
             result.Score = Math.Round(laSienne.Note, 3);

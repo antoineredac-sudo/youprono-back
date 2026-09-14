@@ -847,9 +847,19 @@ namespace dotnet.core.thegoldenfan.Services
 
             var ids = notes.Select(s => s.UserId).ToList();
 
+            // La note de forfait de ce match, et l'heure de sa cloture. Les absents
+            // inscrits avant cette heure recoivent eux aussi un message : ils ont
+            // ecope d'une note, ils doivent l'apprendre autrement qu'en decouvrant
+            // leur coef expert en baisse.
+            var noteForfait = NoteDeForfait(notes.Select(s => s.Note).ToList());
+            DateTime clotureMatch = GroupService.ParisToUtc(
+                match.DateTime.AddHours(-GroupService.ClotureAvantHeures));
+
             var destinataires = await dbContext.Users
-                .Where(w => ids.Contains(w.Id) && w.EmailOptIn && w.Email != null && w.Email != ""
-                         && (w.LastResultMatchId == null || w.LastResultMatchId != match.Id))
+                .Where(w => w.EmailOptIn && w.Email != null && w.Email != ""
+                         && (w.LastResultMatchId == null || w.LastResultMatchId != match.Id)
+                         && (ids.Contains(w.Id)
+                             || (noteForfait != null && w.DateCreated <= clotureMatch)))
                 .ToListAsync();
 
             if (System.Threading.Interlocked.CompareExchange(ref enCoursResultat, 1, 0) != 0)
@@ -859,6 +869,23 @@ namespace dotnet.core.thegoldenfan.Services
             {
                 foreach (var user in destinataires)
                 {
+                    bool aJoue = ids.Contains(user.Id);
+
+                    // L'absent : un message different, sans note detaillee ni rang.
+                    if (!aJoue)
+                    {
+                        await EnvoyerForfaitAsync(user.Email!, user.DisplayName ?? "", user.Id,
+                            result.Affiche, noteForfait!.Value);
+
+                        user.LastResultMatchId = match.Id;
+                        await dbContext.SaveChangesAsync();
+                        result.Envoyes++;
+
+                        if (result.Envoyes < destinataires.Count)
+                        { await Task.Delay(ENVOI_ESPACEMENT_MS); }
+                        continue;
+                    }
+
                     double note = notes.Where(w => w.UserId.Equals(user.Id)).Select(s => s.Note).FirstOrDefault();
 
                     // Sa meilleure et sa pire categorie, comme sur l'ecran des resultats.
@@ -904,6 +931,92 @@ namespace dotnet.core.thegoldenfan.Services
             finally { System.Threading.Interlocked.Exchange(ref enCoursResultat, 0); }
 
             return result;
+        }
+
+        // Le message de l'absent. Pas de note en gros chiffres, pas de rang : il n'a
+        // pas couru cette course. On lui dit ce qu'il a pris, pourquoi, et que le
+        // prochain match est ouvert. Le bouton mene aux pronos, pas au classement —
+        // ce qu'on veut de lui, c'est qu'il revienne jouer.
+        private static async Task EnvoyerForfaitAsync(string adresse, string pseudo, Guid userId,
+            string affiche, double forfait)
+        {
+            string cle = Environment.GetEnvironmentVariable("BREVO_API_KEY") ?? "";
+            if (string.IsNullOrWhiteSpace(cle)) { return; }
+
+            string expediteur = Environment.GetEnvironmentVariable("MAIL_FROM") ?? "contact@youprono.fr";
+            string nom = System.Net.WebUtility.HtmlEncode(pseudo);
+            string aff = System.Net.WebUtility.HtmlEncode(affiche);
+            string lienStop = "https://youprono.fr/#stop/" + userId.ToString();
+            string noteTexte = forfait.ToString("0.000",
+                System.Globalization.CultureInfo.GetCultureInfo("fr-FR"));
+
+            string contenu =
+                PARA + "Salut " + nom + ",</p>"
+
+              + "<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" "
+              + "style=\"margin:0 0 20px;\"><tr>"
+              + "<td style=\"background:" + C_BANDE + ";border:1px solid " + C_OR + ";"
+              + "border-radius:10px;padding:20px;text-align:center;\">"
+              + "<div style=\"font-family:" + POLICE + ";font-size:11px;letter-spacing:2px;"
+              + "color:" + C_GRIS + ";text-transform:uppercase;\">Ta note de forfait</div>"
+              + "<div style=\"font-family:" + POLICE + ";font-size:42px;font-weight:bold;"
+              + "color:" + C_OR + ";line-height:1.1;margin:6px 0 2px;\">" + noteTexte + "</div>"
+              + "<div style=\"font-family:" + POLICE + ";font-size:12px;color:" + C_GRIS + ";\">sur 100</div>"
+              + "<div style=\"font-family:" + POLICE + ";font-size:14px;color:" + C_TEXTE + ";"
+              + "margin-top:12px;font-weight:bold;\">" + aff + "</div>"
+              + "</td></tr></table>"
+
+              + PARA + "N'ayant pas particip&eacute; au dernier match, tu obtiens la meilleure "
+              + "note du tiers le plus faible des participants. Elle entre dans ton Coef Expert "
+              + "comme une vraie note.</p>"
+
+              + PARA + "Les pronos pour le prochain match sont ouverts, tu vas pouvoir prendre "
+              + "ta revanche.</p>"
+
+              + BoutonHtml("https://youprono.fr", "Je fais mes pronos", false, false)
+
+              + "<p style=\"font-family:" + POLICE + ";font-size:16px;line-height:1.7;"
+              + "color:" + C_OR + ";margin:22px 0 0;font-weight:bold;\">Allez Paris</p>";
+
+            string corps = CadreHtml("Ta note de forfait", contenu, lienStop);
+
+            string texteBrut =
+                "Salut " + pseudo + ",\n\n"
+              + "N'ayant pas participe au dernier match (" + affiche + "), tu obtiens la "
+              + "meilleure note du tiers le plus faible des participants : " + noteTexte
+              + ". Elle entre dans ton Coef Expert comme une vraie note.\n\n"
+              + "Les pronos pour le prochain match sont ouverts, tu vas pouvoir prendre ta "
+              + "revanche.\n\n"
+              + "https://youprono.fr\n\n"
+              + "Allez Paris\n\n"
+              + "@lepsgdantoine\n\n"
+              + "---\n"
+              + "Ne plus recevoir de rappel avant match : " + lienStop;
+
+            var charge = new
+            {
+                sender = new { name = "YouProno", email = expediteur },
+                to = new[] { new { email = adresse } },
+                replyTo = new { email = expediteur, name = "YouProno" },
+                subject = "Prends ta revanche lors du prochain match",
+                htmlContent = corps,
+                textContent = texteBrut,
+                headers = new Dictionary<string, string>
+                {
+                    { "List-Unsubscribe", "<" + lienStop + ">" },
+                    { "List-Unsubscribe-Post", "List-Unsubscribe=One-Click" }
+                }
+            };
+
+            try
+            {
+                using var req = new HttpRequestMessage(HttpMethod.Post, "https://api.brevo.com/v3/smtp/email");
+                req.Headers.Add("api-key", cle);
+                req.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+                req.Content = new StringContent(JsonSerializer.Serialize(charge), Encoding.UTF8, "application/json");
+                await http.SendAsync(req);
+            }
+            catch { /* un envoi rate ne doit pas arreter la file */ }
         }
 
         private static async Task EnvoyerResultatAsync(string adresse, string pseudo, Guid userId,
@@ -1131,7 +1244,22 @@ namespace dotnet.core.thegoldenfan.Services
         // Le forfait ne compte que pour les matchs dont la cloture est posterieure
         // a l'inscription du joueur : on ne reproche a personne les matchs joues
         // avant son arrivee.
-        private const int FORFAIT_MIN_PARTICIPANTS = 8;
+        public const int FORFAIT_MIN_PARTICIPANTS = 8;
+
+        // La note de forfait d'un match : la meilleure note du tiers le plus faible
+        // des participants. Null quand il y a trop peu de participants pour que ce
+        // reperage veuille dire quelque chose.
+        // Publique et partagee : le coefficient expert s'en sert pour calculer, et
+        // GroupService pour annoncer sa note a un absent. Une seule definition.
+        public static double? NoteDeForfait(List<double> notes)
+        {
+            if (notes == null || notes.Count < FORFAIT_MIN_PARTICIPANTS) { return null; }
+
+            var triees = notes.OrderBy(o => o).ToList();
+            int index = (int)Math.Ceiling(triees.Count / 3.0) - 1;
+            if (index < 0) { index = 0; }
+            return triees[index];
+        }
 
         public async Task<Dictionary<Guid, double>> ExpertCoefAllAsync(string teamId, string? excludeMatchId = null)
         {
@@ -1153,19 +1281,9 @@ namespace dotnet.core.thegoldenfan.Services
                 clotureParMatch[g.Key] = GroupService.ParisToUtc(
                     g.First().DateTime.AddHours(-GroupService.ClotureAvantHeures));
 
-                var triees = g.Select(s => s.Note).OrderBy(o => o).ToList();
-
-                // En dessous de huit participants, le tiers le plus faible ne repose
-                // que sur deux notes : il ne veut rien dire, et le match ne compte
-                // pas pour les absents.
-                if (triees.Count < FORFAIT_MIN_PARTICIPANTS) { continue; }
-
-                // La meilleure note du tiers le plus faible : le dernier element du
-                // premier tiers, une fois les notes rangees de la plus basse a la
-                // plus haute.
-                int index = (int)Math.Ceiling(triees.Count / 3.0) - 1;
-                if (index < 0) { index = 0; }
-                forfaitParMatch[g.Key] = triees[index];
+                var forfait = NoteDeForfait(g.Select(s => s.Note).ToList());
+                if (forfait == null) { continue; }
+                forfaitParMatch[g.Key] = forfait.Value;
             }
 
             // Les dates d'inscription, pour ne compter que les matchs posterieurs.
