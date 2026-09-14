@@ -997,10 +997,10 @@ namespace dotnet.core.thegoldenfan.Services
         public async Task<MatchRankingResult> MatchRankingAsync(string teamId, string? matchId = null)
         {
             string src = "UserStatsService.MatchRankingAsync";
-            if (StringHelper.IsNull(teamId)) { throw BaseException.InvalidModel(-1, src); }
+            if (string.IsNullOrWhiteSpace(teamId)) { throw BaseException.InvalidModel(-1, src); }
 
             var res = new MatchRankingResult();
-            string? cible = StringHelper.IsNull(matchId)
+            string? cible = string.IsNullOrWhiteSpace(matchId)
                 ? await DernierMatchNoteAsync(teamId)
                 : matchId;
             if (cible == null) { return res; }
@@ -1040,7 +1040,7 @@ namespace dotnet.core.thegoldenfan.Services
                 res.HomeScore = match.HomeTeam != null ? match.HomeTeam.Score : 0;
                 res.AwayScore = match.AwayTeam != null ? match.AwayTeam.Score : 0;
 
-                static string Nom(Dbs.TeamMatch? cote)
+                static string Nom(TeamMatch? cote)
                 {
                     var t = cote?.Team;
                     if (t == null) { return ""; }
