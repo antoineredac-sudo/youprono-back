@@ -32,6 +32,11 @@ public partial class User
     // c'est ce qui empeche un second envoi si la route est appelee deux fois.
     public DateTime? WelcomeSentAt { get; set; }
 
+    // Nombre de tentatives d'envoi du courriel de bienvenue. Au-dela de trois,
+    // on cesse d'essayer : ce n'est plus un incident passager mais une adresse
+    // que Brevo refuse et refusera toujours.
+    public int WelcomeTries { get; set; }
+
     // Le dernier match pour lequel un rappel est parti. Empeche qu'un joueur
     // recoive deux fois le meme rappel si la route est appelee plusieurs fois.
     public string? LastReminderMatchId { get; set; }
