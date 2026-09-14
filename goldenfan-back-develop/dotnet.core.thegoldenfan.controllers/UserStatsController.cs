@@ -155,6 +155,40 @@ namespace dotnet.core.thegoldenfan.controllers
             }
             return res;
         }
+        // Le classement d'un match, de la meilleure note a la plus basse.
+        // Sans matchId, c'est celui du dernier match note.
+        [HttpGet("MatchRanking/{teamId}")]
+        public async Task<ResponseModel<MatchRankingResult>> MatchRankingAsync(string teamId)
+        {
+            ResponseModel<MatchRankingResult> res = ResponseModel<MatchRankingResult>.CreateDefault();
+            try
+            {
+                var obj = await service.MatchRankingAsync(teamId);
+                res = new ResponseModel<MatchRankingResult>(0, obj);
+            }
+            catch (Exception ex)
+            {
+                res = ResponseModel<MatchRankingResult>.Exception(ex);
+            }
+            return res;
+        }
+
+        [HttpGet("MatchRanking/{teamId}/{matchId}")]
+        public async Task<ResponseModel<MatchRankingResult>> MatchRankingByIdAsync(string teamId, string matchId)
+        {
+            ResponseModel<MatchRankingResult> res = ResponseModel<MatchRankingResult>.CreateDefault();
+            try
+            {
+                var obj = await service.MatchRankingAsync(teamId, matchId);
+                res = new ResponseModel<MatchRankingResult>(0, obj);
+            }
+            catch (Exception ex)
+            {
+                res = ResponseModel<MatchRankingResult>.Exception(ex);
+            }
+            return res;
+        }
+
         [HttpGet("RankingByResultTotal/{teamId}")]
         public async Task<ResponseModel<List<UserRanking>>> RankingByResultTotalAsync(string teamId)
         {
