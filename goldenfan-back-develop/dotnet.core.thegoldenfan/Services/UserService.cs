@@ -655,10 +655,14 @@ namespace dotnet.core.thegoldenfan.Services
             DateTime debutJournee = TimeZoneInfo.ConvertTimeToUtc(
                 maintenantParis.Date, GroupService.ParisTimeZoneInfo);
 
+            // Celui qui a deja pronostique ce match ne recoit rien : il n'a plus rien
+            // a faire, et une boite qu'on encombre est une boite qu'on finit par
+            // filtrer. Le rappel ne s'adresse qu'a ceux qui n'ont pas encore joue.
             var destinataires = await dbContext.Users
                 .Where(w => w.EmailOptIn && w.Email != null && w.Email != ""
                          && (w.LastReminderMatchId == null || w.LastReminderMatchId != match.Id)
-                         && (w.WelcomeSentAt == null || w.WelcomeSentAt < debutJournee))
+                         && (w.WelcomeSentAt == null || w.WelcomeSentAt < debutJournee)
+                         && !ontJoue.Contains(w.Id))
                 .ToListAsync();
 
             // Un seul passage a la fois.
@@ -669,10 +673,8 @@ namespace dotnet.core.thegoldenfan.Services
             {
                 foreach (var user in destinataires)
                 {
-                    bool aDejaJoue = ontJoue.Contains(user.Id);
-
                     await EnvoyerRappelAsync(user.Email!, user.DisplayName ?? "", user.Id,
-                        adversaire, result.Affiche, heureMatch, heureCloture, aDejaJoue);
+                        adversaire, result.Affiche, heureMatch, heureCloture);
 
                     // Enregistre immediatement, avant l'envoi suivant. C'est ce qui
                     // rend une interruption inoffensive : ce qui est parti est note,
@@ -682,7 +684,6 @@ namespace dotnet.core.thegoldenfan.Services
                     await dbContext.SaveChangesAsync();
 
                     result.Envoyes++;
-                    if (aDejaJoue) { result.DejaJoue++; }
 
                     if (result.Envoyes < destinataires.Count)
                     { await Task.Delay(ENVOI_ESPACEMENT_MS); }
@@ -694,7 +695,7 @@ namespace dotnet.core.thegoldenfan.Services
         }
 
         private static async Task EnvoyerRappelAsync(string adresse, string pseudo, Guid userId,
-            string adversaire, string affiche, string heureMatch, string heureCloture, bool aDejaJoue)
+            string adversaire, string affiche, string heureMatch, string heureCloture)
         {
             string cle = Environment.GetEnvironmentVariable("BREVO_API_KEY") ?? "";
             if (string.IsNullOrWhiteSpace(cle)) { return; }
@@ -705,9 +706,11 @@ namespace dotnet.core.thegoldenfan.Services
 
             // « faire et modifier » pour celui qui n'a rien fait, « modifier »
             // seulement pour celui qui a deja pronostique.
-            string verbe = aDejaJoue ? "modifier" : "faire et modifier";
+            // Une seule version desormais : ce message ne part qu'a ceux qui n'ont
+            // pas encore pronostique.
+            const string verbe = "faire et modifier";
 
-            string libelleBouton = aDejaJoue ? "Modifie ton prono" : "Fais tes pronos";
+            const string libelleBouton = "Je fais mes pronos";
 
             string contenu =
                 PARA + "Salut " + nom + ",</p>"
