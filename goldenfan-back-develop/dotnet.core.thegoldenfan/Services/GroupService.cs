@@ -1390,110 +1390,129 @@ namespace dotnet.core.thegoldenfan.Services
         // match : la meme note ne se lit pas pareil un soir de 6-1 et un soir de 2-0
         // sans surprise. En dessous de MedianeMinJoueurs notes, la mediane ne veut
         // rien dire et on s'en tient a une phrase neutre par tranche.
-        // Une seconde phrase cite la meilleure categorie (a partir de CategorieForte)
-        // quand la note est bonne, ou la pire (sous CategorieFaible) quand elle ne
-        // l'est pas. Jamais les deux.
+        // Un complement cite la meilleure categorie des qu'elle atteint CategorieForte,
+        // et un autre la pire des qu'elle tombe sous CategorieFaible. Les deux sont
+        // independants de la note globale, et peuvent donc tomber ensemble.
         // Les huit tranches et les textes sont d'Antoine, valides le 11 septembre 2026.
         private const int MedianeMinJoueurs = 4;
         private const double CategorieForte = 90;
         private const double CategorieFaible = 40;
-        private const double VerdictBascule = 70;
 
+        // Chaque cas porte une LISTE de formulations, pas une seule. Le defaut
+        // n'etait pas le manque de variete entre joueurs, mais la repetition dans
+        // le temps : celui qui tourne autour de 75 toute la saison relisait la meme
+        // phrase tous les trois matchs. Ajouter une formulation, c'est ajouter une
+        // ligne dans le tableau ci-dessous, jamais toucher a la mecanique.
         private sealed class Tranche
         {
             public double Min;
-            public string Dessous = "";
-            public string Dessus = "";
-            public string Neutre = "";
+            public string[] Dessous = Array.Empty<string>();
+            public string[] Dessus = Array.Empty<string>();
+            public string[] Neutre = Array.Empty<string>();
+        }
+
+        // Le choix d'une formulation dans la liste. Deterministe, jamais aleatoire :
+        // le site et le courriel du lendemain doivent dire exactement la meme chose
+        // pour le meme match. On melange l'identifiant du joueur et celui du match,
+        // ce qui donne aussi deux phrases differentes a deux joueurs de meme note.
+        private static string Choisir(string[] textes, Guid userId, string matchId)
+        {
+            if (textes == null || textes.Length == 0) { return ""; }
+            if (textes.Length == 1) { return textes[0]; }
+
+            int graine = userId.GetHashCode();
+            foreach (char c in matchId ?? "") { graine = graine * 31 + c; }
+            int index = Math.Abs(graine % textes.Length);
+            return textes[index];
         }
 
         // De la tranche la plus haute a la plus basse.
         private static readonly Tranche[] Verdicts =
         {
             new() { Min = 90,
-                Dessous = "Plus de 90 et pas dans la moitie haute : le soir ou tout le monde avait vu le match avant qu'il se joue.",
-                Dessus  = "Tu as vu le match avant qu'il se joue. Enrique devrait t'appeler.",
-                Neutre  = "Tu as vu le match avant qu'il se joue. Enrique devrait t'appeler." },
+                Dessous = new[] { "Tu as vu le match avant qu'il se joue, comme la majorité des autres joueurs." },
+                Dessus = new[] { "Tu as vu le match avant qu'il se joue. Enrique devrait t'appeler." },
+                Neutre = new[] { "Tu as vu le match avant qu'il se joue. Enrique devrait t'appeler." } },
             new() { Min = 85,
-                Dessous = "Grand soir pour toi, plus grand encore pour les autres. Le match etait ecrit d'avance.",
-                Dessus  = "Grand soir, et la majorite en est loin.",
-                Neutre  = "Grand soir." },
+                Dessous = new[] { "Grand soir pour toi, plus grand encore pour les autres. Le match était écrit d'avance." },
+                Dessus = new[] { "Grand soir pour toi, mais pas pour les autres. Bien joué." },
+                Neutre = new[] { "Grand soir." } },
             new() { Min = 80,
-                Dessous = "Note d'expert, dans un match d'experts. Ce soir, 80 ne suffisait pas.",
-                Dessus  = "Note d'expert, et peu de supporters voient le match aussi juste.",
-                Neutre  = "Note d'expert. Peu de supporters voient le match aussi juste." },
+                Dessous = new[] { "Malgré ta note d'expert, la majorité a réussi à faire mieux que toi. Ce match était écrit à l'avance." },
+                Dessus = new[] { "Ton expertise est récompensée par cette très bonne note. Tu étais un niveau au-dessus des autres." },
+                Neutre = new[] { "Note d'expert. Peu de supporters voient le match aussi juste." } },
             new() { Min = 75,
-                Dessous = "Solide, et pourtant dans la moitie basse : le match etait lisible, tout le monde l'a lu.",
-                Dessus  = "Solide, et au-dessus du lot. Le match etait difficile a lire, tu l'as lu.",
-                Neutre  = "Solide. Tu as lu le match." },
+                Dessous = new[] { "Tu obtiens une bonne note, mais les autres ont réussi à élever leur niveau de jeu." },
+                Dessus = new[] {
+                    "Tu as réussi à obtenir une bonne note, la plupart ne peut pas en dire autant.",
+                    "Tu as mieux anticipé le match que les autres joueurs. Tu devrais remonter au classement." },
+                Neutre = new[] { "Solide. Tu as lu le match." } },
             new() { Min = 70,
-                Dessous = "Pas mal defendu, mais les autres ont mieux lu le match.",
-                Dessus  = "Bien defendu. Ce n'etait pas un match facile a lire, tu l'as mieux lu que la plupart.",
-                Neutre  = "Tu ne t'es pas mal defendu. Il manquait un titulaire ou un but pour changer de categorie." },
+                Dessous = new[] { "Une note honorable, qui a été dépassée par de nombreux joueurs." },
+                Dessus = new[] { "Ce match était difficile à anticiper et tu t'es bien défendu." },
+                Neutre = new[] { "Tu ne t'es pas mal défendu. Il manquait un titulaire ou un but pour changer de catégorie." } },
             new() { Min = 60,
-                Dessous = "Peut mieux faire. La moitie des supporters t'a devance.",
-                Dessus  = "Note moyenne, soiree difficile : tu finis dans la bonne moitie.",
-                Neutre  = "Dans la moyenne des supporters. Ni la tribune, ni le banc." },
+                Dessous = new[] { "Tu feras mieux au prochain match." },
+                Dessus = new[] { "Une note moyenne lors d'un match difficile à prédire. Tu as évité le pire, pas les autres." },
+                Neutre = new[] { "Dans la moyenne des supporters. Ni la tribune, ni le banc." } },
             new() { Min = 50,
-                Dessous = "Tu as vu le match de loin. Et la plupart l'ont vu de plus pres.",
-                Dessus  = "Mauvaise note, mais la majorite a fait pire. Ce soir, 55 c'etait voir juste.",
-                Neutre  = "Tu as vu le match de loin." },
+                Dessous = new[] { "Tu as vu le match de loin. Et la plupart l'ont vu de plus près." },
+                Dessus = new[] { "Mauvaise note, mais la majorité a fait pire. Ce soir, 55 c'était voir juste." },
+                Neutre = new[] { "Tu as vu le match de loin." } },
             new() { Min = double.MinValue,
-                Dessous = "Naufrage. Le PSG a joué un match, tu en avais pronostiqué un autre.",
-                Dessus  = "Naufrage collectif. Ta note est mauvaise, celle de la majorité est pire : personne n'avait vu ce match venir.",
-                Neutre  = "Naufrage. Le PSG a joué un match, tu en avais pronostiqué un autre." }
+                Dessous = new[] { "Le PSG a joué un match, tu en avais pronostiqué un autre." },
+                Dessus = new[] { "Ce n'était pas ton soir, et encore moins celui des autres joueurs." },
+                Neutre = new[] { "Le PSG a joué un match, tu en avais pronostiqué un autre." } }
         };
 
         private static readonly Dictionary<string, string> CategorieForteTexte = new()
         {
-            { "composition", "Et tu as été exceptionnel en compo." },
-            { "score",       "Et tu avais le score." },
-            { "possession",  "Et tu avais la possession au pourcent près." },
-            { "shots",       "Et tu avais les tirs." },
-            { "fouls",       "Et tu avais les fautes." },
-            { "crosses",     "Et tu avais les centres." }
+            { "composition", "Tu as été fort en composition." },
+            { "score",       "Tu as été fort en score." },
+            { "possession",  "Tu as été fort en possession." },
+            { "shots",       "Tu as été fort en tirs." },
+            { "fouls",       "Tu as été fort en fautes." },
+            { "crosses",     "Tu as été fort en centres." }
         };
 
         private static readonly Dictionary<string, string> CategorieFaibleTexte = new()
         {
-            { "composition", "C'est la compo qui t'a coulé." },
-            { "score",       "C'est le score qui t'a coulé." },
-            { "possession",  "C'est la possession qui t'a coulé." },
-            { "shots",       "Ce sont les tirs qui t'ont coulé." },
-            { "fouls",       "Ce sont les fautes qui t'ont coulé." },
-            { "crosses",     "Ce sont les centres qui t'ont coulé." }
+            { "composition", "La composition a fait baisser ta note globale." },
+            { "score",       "Le score a fait baisser ta note globale." },
+            { "possession",  "La possession a fait baisser ta note globale." },
+            { "shots",       "Les tirs ont fait baisser ta note globale." },
+            { "fouls",       "Les fautes ont fait baisser ta note globale." },
+            { "crosses",     "Les centres ont fait baisser ta note globale." }
         };
 
-        private static string EcrireVerdict(MatchEventsResult d)
+        private static string EcrireVerdict(MatchEventsResult d, Guid userId, string matchId)
         {
             if (d == null || !d.HasScore) { return ""; }
 
             var tranche = Verdicts.FirstOrDefault(v => d.Score >= v.Min) ?? Verdicts[^1];
 
             bool medianeUtile = d.ScoredCount >= MedianeMinJoueurs;
-            string phrase = !medianeUtile ? tranche.Neutre
-                          : (d.Score >= d.MatchMedian ? tranche.Dessus : tranche.Dessous);
+            var choix = !medianeUtile ? tranche.Neutre
+                      : (d.Score >= d.MatchMedian ? tranche.Dessus : tranche.Dessous);
+            string phrase = Choisir(choix, userId, matchId);
 
-            // Le complement : une seule categorie citee, jamais les deux.
-            string complement = "";
-            if (d.Score >= VerdictBascule)
-            {
-                if (!string.IsNullOrEmpty(d.BestCategory) && d.BestCategoryNote >= CategorieForte
-                    && CategorieForteTexte.TryGetValue(d.BestCategory, out var fort))
-                {
-                    complement = fort;
-                    // La phrase de base a deja son « et » : le complement lache le sien.
-                    if (phrase.Contains(", et ")) { complement = complement.Replace("Et tu", "Tu"); }
-                }
-            }
-            else
-            {
-                if (!string.IsNullOrEmpty(d.WorstCategory) && d.WorstCategoryNote < CategorieFaible
-                    && CategorieFaibleTexte.TryGetValue(d.WorstCategory, out var faible))
-                { complement = faible; }
-            }
+            // Les complements ne dependent plus de la note globale. Une categorie
+            // au-dessus de CategorieForte se felicite meme chez un joueur moyen ;
+            // une categorie sous CategorieFaible se signale meme chez un bon joueur,
+            // parce que c'est precisement ce qu'il a besoin de comprendre.
+            // Les deux peuvent donc apparaitre ensemble : c'est le profil de celui
+            // qui prend des risques, et c'est exactement ce qu'un supporter dirait.
+            var morceaux = new List<string> { phrase };
 
-            return string.IsNullOrEmpty(complement) ? phrase : phrase + " " + complement;
+            if (!string.IsNullOrEmpty(d.BestCategory) && d.BestCategoryNote >= CategorieForte
+                && CategorieForteTexte.TryGetValue(d.BestCategory, out var fort))
+            { morceaux.Add(fort); }
+
+            if (!string.IsNullOrEmpty(d.WorstCategory) && d.WorstCategoryNote < CategorieFaible
+                && CategorieFaibleTexte.TryGetValue(d.WorstCategory, out var faible))
+            { morceaux.Add(faible); }
+
+            return string.Join(" ", morceaux);
         }
 
         // Mediane d'une liste de notes : la valeur du milieu, ou la moyenne des deux
@@ -1660,7 +1679,7 @@ namespace dotnet.core.thegoldenfan.Services
 
             // La phrase du verdict, ecrite en dernier : elle a besoin de la note, de
             // la mediane et des categories, tous renseignes plus haut.
-            result.Verdict = EcrireVerdict(result);
+            result.Verdict = EcrireVerdict(result, userId, matchId);
 
             return result;
         }
