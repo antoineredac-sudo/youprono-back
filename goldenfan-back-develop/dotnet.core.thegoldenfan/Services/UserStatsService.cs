@@ -961,6 +961,101 @@ namespace dotnet.core.thegoldenfan.Services
                 .FirstOrDefaultAsync();
         }
 
+        // ===== LE CLASSEMENT DU DERNIER MATCH =====
+        // Toutes les notes d'un match, de la meilleure a la plus basse. Le jeu
+        // savait deja dire a chacun son rang — « 8e sur 11 » — mais nulle part on
+        // ne pouvait voir la liste. C'est pourtant l'ecran qu'on partage le soir
+        // d'un match.
+        //
+        // Aucune note de forfait ici : le forfait ne pese que sur le coefficient
+        // expert. Un absent n'apparait pas dans le classement d'un match qu'il n'a
+        // pas joue.
+        public sealed class MatchRankingRow
+        {
+            public Guid Id { get; set; }
+            public string? UserName { get; set; }
+            public int Rank { get; set; }
+            public double Score { get; set; }
+        }
+
+        public sealed class MatchRankingResult
+        {
+            public string? MatchId { get; set; }
+
+            // L'affiche et le score reel, pour titrer l'ecran.
+            public string? HomeTeam { get; set; }
+            public string? AwayTeam { get; set; }
+            public int HomeScore { get; set; }
+            public int AwayScore { get; set; }
+            public DateTime DateTime { get; set; }
+
+            public double Median { get; set; }
+            public List<MatchRankingRow> Rows { get; set; } = new();
+        }
+
+        // matchId facultatif : sans lui, on prend le dernier match note.
+        public async Task<MatchRankingResult> MatchRankingAsync(string teamId, string? matchId = null)
+        {
+            string src = "UserStatsService.MatchRankingAsync";
+            if (StringHelper.IsNull(teamId)) { throw BaseException.InvalidModel(-1, src); }
+
+            var res = new MatchRankingResult();
+            string? cible = StringHelper.IsNull(matchId)
+                ? await DernierMatchNoteAsync(teamId)
+                : matchId;
+            if (cible == null) { return res; }
+
+            res.MatchId = cible;
+
+            var lignes = await dbContext.UserMatches
+                .Where(w => w.TeamId.Equals(teamId) && w.MatchId.Equals(cible) && w.ResultTotal.HasValue)
+                .Include(i => i.User)
+                .Select(s => new { s.UserId, Pseudo = s.User.DisplayName, Note = s.ResultTotal!.Value })
+                .ToListAsync();
+
+            var triees = lignes.OrderByDescending(o => o.Note).ToList();
+            for (int i = 0; i < triees.Count; i++)
+            {
+                res.Rows.Add(new MatchRankingRow
+                {
+                    Id = triees[i].UserId,
+                    UserName = triees[i].Pseudo,
+                    Rank = i + 1,
+                    Score = Math.Round(triees[i].Note, 3)
+                });
+            }
+
+            res.Median = Math.Round(GroupService.Mediane(lignes.Select(s => s.Note).ToList()), 3);
+
+            // L'affiche et le score officiel du match.
+            var match = await dbContext.Matches
+                .AsNoTracking()
+                .Include(i => i.HomeTeam).ThenInclude(t => t.Team)
+                .Include(i => i.AwayTeam).ThenInclude(t => t.Team)
+                .FirstOrDefaultAsync(w => w.Id.Equals(cible));
+
+            if (match != null)
+            {
+                res.DateTime = match.DateTime;
+                res.HomeScore = match.HomeTeam != null ? match.HomeTeam.Score : 0;
+                res.AwayScore = match.AwayTeam != null ? match.AwayTeam.Score : 0;
+
+                static string Nom(Dbs.TeamMatch? cote)
+                {
+                    var t = cote?.Team;
+                    if (t == null) { return ""; }
+                    if (!string.IsNullOrWhiteSpace(t.OfficialName)) { return t.OfficialName!; }
+                    if (!string.IsNullOrWhiteSpace(t.Name)) { return t.Name; }
+                    if (!string.IsNullOrWhiteSpace(t.ShortName)) { return t.ShortName!; }
+                    return "";
+                }
+                res.HomeTeam = Nom(match.HomeTeam);
+                res.AwayTeam = Nom(match.AwayTeam);
+            }
+
+            return res;
+        }
+
         private static void PoserMouvement(List<UserRanking> apres, Dictionary<Guid, int> avant)
         {
             foreach (var r in apres)
