@@ -68,18 +68,15 @@ namespace dotnet.core.thegoldenfan.Services
             return new AttendanceResult { Played = (int)totalPrediction, Total = (int)totalMatch };
         }
 
-        // ===== LE SEUIL DE PARTICIPATION =====
-        // Un joueur figure au classement general s'il a pronostique au moins la
-        // moitie des matchs qu'il pouvait jouer. En dessous, il en sort : les rangs
-        // se renumerotent sans lui et il apparait en bas de liste, en gris.
+        // ===== L'ASSIDUITE =====
+        // Ce calcul ne decide plus qui figure au classement — tout le monde y
+        // figure depuis le 14 septembre 2026, la note de forfait ayant remplace le
+        // seuil des deux tiers. Il ne sert plus qu'a produire la fraction affichee
+        // par le site a cote de chaque joueur : « 3/4 », soit trois matchs joues
+        // sur les quatre qu'il pouvait jouer.
         //
         // Ce qu'il pouvait jouer : les matchs notes dont la CLOTURE tombe apres son
-        // inscription. Le match en cours, non encore note, ne compte pas — sinon
-        // tout le monde sortirait du classement le soir d'un match.
-        //
-        // Propriete de la regle : un nouveau est classe des son premier match
-        // (1 sur 1), reste classe s'il en saute un (1 sur 2), et sort au deuxieme
-        // manque (1 sur 3).
+        // inscription. Le match en cours, non encore note, ne compte pas.
         public sealed class EligibiliteResult
         {
             public int Joues { get; set; }
@@ -127,12 +124,14 @@ namespace dotnet.core.thegoldenfan.Services
                 {
                     Joues = nb,
                     Total = total,
-                    // Aucun match a son actif depuis l'inscription : rien a lui
-                    // reprocher, il reste classe.
-                    // Le seuil est de deux tiers des matchs disputes depuis son
-                    // inscription : nb / total >= 2/3, ecrit sans division pour
-                    // rester en nombres entiers.
-                    Classe = total == 0 || (nb * 3) >= (total * 2)
+                    // Depuis le 14 septembre 2026, tout le monde est classe. La regle
+                    // des deux tiers a ete remplacee par la note de forfait : un
+                    // absent voit sa moyenne baisser, il n'a pas en plus a etre grise
+                    // au classement. Une seule sanction, progressive, et une seule
+                    // regle a expliquer.
+                    // Joues et Total restent renseignes : le site les affiche sous
+                    // forme de fraction, « 3/4 », qui dit l'assiduite sans punir.
+                    Classe = true
                 };
             }
             return res;
@@ -1116,20 +1115,89 @@ namespace dotnet.core.thegoldenfan.Services
             }
         }
 
+        // « Si tu ne joues pas, tu prends la meilleure note du dernier tiers. »
+        //
+        // Un joueur absent a un match note se voit attribuer la meilleure note du
+        // tiers le plus faible des participants — c'est-a-dire la note au-dessus de
+        // laquelle se trouvent les deux tiers du monde. Cette note entre dans sa
+        // moyenne comme une vraie.
+        //
+        // Pourquoi ce reperage plutot qu'une mediane moins un nombre fixe : il
+        // s'adapte a la dispersion du soir. Un match ou tout le monde se tient
+        // coute peu au joueur absent ; un match ou les notes s'ecartent lui coute
+        // cher, parce que c'est ce soir-la qu'il y avait quelque chose a gagner. Et
+        // il ne contient aucun reglage arbitraire a defendre.
+        //
+        // Le forfait ne compte que pour les matchs dont la cloture est posterieure
+        // a l'inscription du joueur : on ne reproche a personne les matchs joues
+        // avant son arrivee.
+        private const int FORFAIT_MIN_PARTICIPANTS = 8;
+
         public async Task<Dictionary<Guid, double>> ExpertCoefAllAsync(string teamId, string? excludeMatchId = null)
         {
-            var moyennes = await dbContext
+            // Toutes les notes reelles, match par match.
+            var notes = await dbContext
                 .UserMatches
                 .Where(w => w.TeamId.Equals(teamId) && w.ResultTotal.HasValue
                          && (excludeMatchId == null || !w.MatchId.Equals(excludeMatchId)))
-                .GroupBy(gb => gb.UserId)
-                .Select(g => new { UserId = g.Key, Moyenne = g.Average(a => a.ResultTotal.Value) })
+                .Include(i => i.Match)
+                .Select(s => new { s.UserId, s.MatchId, Note = s.ResultTotal!.Value, s.Match.DateTime })
                 .ToListAsync();
 
-            var res = new Dictionary<Guid, double>();
-            foreach (var item in moyennes)
+            // Par match : la note de forfait, et l'heure de cloture.
+            var forfaitParMatch = new Dictionary<string, double>();
+            var clotureParMatch = new Dictionary<string, DateTime>();
+
+            foreach (var g in notes.GroupBy(gb => gb.MatchId))
             {
-                res[item.UserId] = Math.Round(item.Moyenne, 4);
+                clotureParMatch[g.Key] = GroupService.ParisToUtc(
+                    g.First().DateTime.AddHours(-GroupService.ClotureAvantHeures));
+
+                var triees = g.Select(s => s.Note).OrderBy(o => o).ToList();
+
+                // En dessous de huit participants, le tiers le plus faible ne repose
+                // que sur deux notes : il ne veut rien dire, et le match ne compte
+                // pas pour les absents.
+                if (triees.Count < FORFAIT_MIN_PARTICIPANTS) { continue; }
+
+                // La meilleure note du tiers le plus faible : le dernier element du
+                // premier tiers, une fois les notes rangees de la plus basse a la
+                // plus haute.
+                int index = (int)Math.Ceiling(triees.Count / 3.0) - 1;
+                if (index < 0) { index = 0; }
+                forfaitParMatch[g.Key] = triees[index];
+            }
+
+            // Les dates d'inscription, pour ne compter que les matchs posterieurs.
+            var inscriptions = await dbContext.Users
+                .Select(s => new { s.Id, s.DateCreated })
+                .ToListAsync();
+
+            var notesParJoueur = notes
+                .GroupBy(gb => gb.UserId)
+                .ToDictionary(g => g.Key, g => g.ToList());
+
+            var res = new Dictionary<Guid, double>();
+            foreach (var u in inscriptions)
+            {
+                var valeurs = notesParJoueur.ContainsKey(u.Id)
+                    ? notesParJoueur[u.Id].Select(s => s.Note).ToList()
+                    : new List<double>();
+
+                var joues = notesParJoueur.ContainsKey(u.Id)
+                    ? notesParJoueur[u.Id].Select(s => s.MatchId).ToHashSet()
+                    : new HashSet<string>();
+
+                foreach (var kv in forfaitParMatch)
+                {
+                    if (joues.Contains(kv.Key)) { continue; }
+                    if (!clotureParMatch.TryGetValue(kv.Key, out var cloture)) { continue; }
+                    if (cloture < u.DateCreated) { continue; }
+                    valeurs.Add(kv.Value);
+                }
+
+                if (valeurs.Count == 0) { continue; }
+                res[u.Id] = Math.Round(valeurs.Average(), 4);
             }
             return res;
         }
