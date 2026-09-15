@@ -1392,6 +1392,145 @@ namespace dotnet.core.thegoldenfan.Services
         }
 
 
+        // --- Suppression d'un compte (usage privé du fondateur) ---
+        // Ajoutée le 15 septembre 2026 pour retirer les comptes de test.
+        // Trois garde-fous, parce qu'une suppression est définitive :
+        //   1. le code d'accès, le même que pour la liste des inscrits ;
+        //   2. le pseudo doit correspondre à l'identifiant — une faute de copie
+        //      sur l'id ne peut donc pas viser un autre joueur ;
+        //   3. un compte qui a enregistré au moins un pronostic est refusé :
+        //      ses notes font partie des classements des autres. Cette version
+        //      ne supprime que des comptes vierges.
+        // Un groupe créé par ce compte et qui compte d'autres membres bloque
+        // aussi la suppression : le groupe perdrait son créateur en base.
+        // Toutes les clés étrangères sont en ClientSetNull, sans cascade côté
+        // base : chaque table liée est donc vidée explicitement, avant le compte.
+
+        public sealed class DeleteAccountResult
+        {
+            public Guid Id { get; set; }
+            public string? DisplayName { get; set; }
+            public bool Supprime { get; set; }
+            public List<string> GroupesQuittes { get; set; } = new();
+            public List<string> GroupesSupprimes { get; set; } = new();
+            public int AmisRetires { get; set; }
+            public int AbonnementsRetires { get; set; }
+            public int NotificationsRetirees { get; set; }
+        }
+
+        public async Task<DeleteAccountResult> DeleteAccountAsync(string accessCode, Guid userId, string displayName)
+        {
+            string src = "UserService.DeleteAccountAsync";
+            if (StringHelper.IsNull(accessCode) ||
+                !accessCode.Trim().Equals(AllUsersAccessCode, StringComparison.OrdinalIgnoreCase))
+            { throw BaseException.InvalidModel(-1, src); }
+
+            var user = await dbContext.Users.FirstOrDefaultAsync(w => w.Id.Equals(userId));
+            if (user == null)
+            { throw new BaseException(-2, src, "Aucun compte ne porte cet identifiant."); }
+
+            string pseudoSaisi = (displayName ?? "").Trim().TrimStart('@');
+            if (!string.Equals((user.DisplayName ?? "").Trim(), pseudoSaisi, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new BaseException(-3, src,
+                    "Le pseudo ne correspond pas à cet identifiant : ce compte s'appelle « "
+                    + user.DisplayName + " ». Rien n'a été supprimé.");
+            }
+
+            int pronos = await dbContext.UserMatches.CountAsync(w => w.UserId.Equals(userId));
+            if (pronos > 0)
+            {
+                throw new BaseException(-4, src,
+                    user.DisplayName + " a enregistré " + pronos + " pronostic(s) : ce compte a joué, "
+                    + "il n'est pas supprimé. Rien n'a été modifié.");
+            }
+
+            // Les groupes créés par ce compte.
+            var groupesCrees = await dbContext.Groups
+                .Include(i => i.Members)
+                .Where(w => w.CreatorId.Equals(userId))
+                .ToListAsync();
+
+            var bloquants = groupesCrees
+                .Where(g => g.Members.Any(m => !m.UserId.Equals(userId)))
+                .Select(g => g.Name)
+                .ToList();
+            if (bloquants.Count > 0)
+            {
+                throw new BaseException(-5, src,
+                    user.DisplayName + " a créé un groupe où il reste d'autres membres ("
+                    + string.Join(", ", bloquants) + "). Rien n'a été supprimé.");
+            }
+
+            var res = new DeleteAccountResult { Id = user.Id, DisplayName = user.DisplayName };
+
+            // Groupes rejoints, créés par d'autres : on retire seulement l'adhésion.
+            var idsCrees = groupesCrees.Select(g => g.Id).ToHashSet();
+            // Comme dans GroupService.LeaveAsync, un groupe dont il était le dernier
+            // membre est supprimé : un groupe vide n'a plus de raison d'exister.
+            var adhesions = await dbContext.GroupMembers
+                .Include(i => i.Group)
+                .ThenInclude(g => g.Members)
+                .Where(w => w.UserId.Equals(userId))
+                .ToListAsync();
+            var groupesVides = new List<Group>();
+            foreach (var a in adhesions.Where(w => !idsCrees.Contains(w.GroupId)))
+            {
+                if (a.Group.Members.Count <= 1)
+                {
+                    groupesVides.Add(a.Group);
+                    res.GroupesSupprimes.Add(a.Group.Name);
+                }
+                else
+                {
+                    res.GroupesQuittes.Add(a.Group.Name);
+                }
+            }
+            dbContext.GroupMembers.RemoveRange(adhesions);
+            dbContext.Groups.RemoveRange(groupesVides);
+
+            // Groupes créés par ce compte, où il était seul : ils disparaissent avec lui.
+            foreach (var g in groupesCrees)
+            {
+                res.GroupesSupprimes.Add(g.Name);
+            }
+            dbContext.Groups.RemoveRange(groupesCrees);
+
+            var amis = await dbContext.Friends
+                .Where(w => w.User0Id.Equals(userId) || w.User1Id.Equals(userId))
+                .ToListAsync();
+            res.AmisRetires = amis.Count;
+            dbContext.Friends.RemoveRange(amis);
+
+            var abonnements = await dbContext.Followers
+                .Where(w => w.UserId.Equals(userId) || w.FollowerId.Equals(userId))
+                .ToListAsync();
+            res.AbonnementsRetires = abonnements.Count;
+            dbContext.Followers.RemoveRange(abonnements);
+
+            var notifications = await dbContext.Subscriptions
+                .Where(w => w.UserId.Equals(userId))
+                .ToListAsync();
+            res.NotificationsRetirees = notifications.Count;
+            dbContext.Subscriptions.RemoveRange(notifications);
+
+            // Deux enregistrements, dans une seule transaction : les liens d'abord,
+            // le compte ensuite, pour qu'aucune contrainte de clé étrangère ne
+            // bute sur l'ordre des suppressions. Si la seconde étape échoue, la
+            // transaction annule aussi la première : tout ou rien.
+            using (var transaction = await dbContext.Database.BeginTransactionAsync())
+            {
+                await dbContext.SaveChangesAsync();
+                dbContext.Users.Remove(user);
+                await dbContext.SaveChangesAsync();
+                await transaction.CommitAsync();
+            }
+
+            res.Supprime = true;
+            return res;
+        }
+
+
         // --- Inscription et connexion par pseudo (remplace Twitter Connect) ---
         public sealed class RegisterInputModel
         {
