@@ -155,6 +155,24 @@ namespace dotnet.core.thegoldenfan.controllers
             }
             return res;
         }
+        // Le classement d'une categorie de pronostic : composition, score,
+        // possession, shots, fouls, crosses.
+        [HttpGet("RankingByCategory/{teamId}/{categorie}")]
+        public async Task<ResponseModel<List<UserRanking>>> RankingByCategoryAsync(string teamId, string categorie)
+        {
+            ResponseModel<List<UserRanking>> res = ResponseModel<List<UserRanking>>.CreateDefault();
+            try
+            {
+                var obj = await service.RankingByCategoryAsync(teamId, categorie);
+                res = new ResponseModel<List<UserRanking>>(0, obj);
+            }
+            catch (Exception ex)
+            {
+                res = ResponseModel<List<UserRanking>>.Exception(ex);
+            }
+            return res;
+        }
+
         // La moyenne des pronostics sur un match deja note. Sans matchId, le dernier.
         [HttpGet("MoyennePronos/{teamId}")]
         public async Task<ResponseModel<MoyennePronosResult>> MoyennePronosAsync(string teamId)
