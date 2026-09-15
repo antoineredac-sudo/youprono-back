@@ -1318,6 +1318,87 @@ namespace dotnet.core.thegoldenfan.Services
             return res;
         }
 
+        // ===== LES CLASSEMENTS PAR CATEGORIE =====
+        // Le roi de la compo, le boss de la possession, le pro du tacle. Toutes les
+        // notes existent deja en base, une par categorie et par match : on en fait
+        // la moyenne, exactement comme le coefficient expert fait la moyenne des
+        // notes globales.
+        //
+        // Difference assumee avec le coef expert : les forfaits n'entrent PAS dans
+        // ces classements. Une absence ne produit pas de note par categorie — il n'y
+        // a pas de « possession » d'un match qu'on n'a pas joue. Ces classements
+        // disent qui est le meilleur dans un domaine, pas qui est le plus assidu.
+        private static readonly Dictionary<string, string> CATEGORIES = new()
+        {
+            { "composition", "composition" },
+            { "score",       "score" },
+            { "possession",  "possession" },
+            { "shots",       "shots" },
+            { "fouls",       "fouls" },
+            { "crosses",     "crosses" }
+        };
+
+        private sealed class LigneCategorie
+        {
+            public Guid UserId { get; set; }
+            public string? Pseudo { get; set; }
+            public double? Note { get; set; }
+        }
+
+        public async Task<List<UserRanking>> RankingByCategoryAsync(string teamId, string categorie)
+        {
+            var res = new List<UserRanking>();
+            string cle = (categorie ?? "").Trim().ToLowerInvariant();
+            if (!CATEGORIES.ContainsKey(cle)) { return res; }
+
+            var enMemoire = LireMemoire("cat:" + cle + ":" + teamId);
+            if (enMemoire != null) { return enMemoire; }
+
+            // Une seule requete, et la note de la categorie demandee choisie dans la
+            // projection : pas de type anonyme manipule ensuite, donc pas de
+            // surprise a l'execution.
+            var lignes = await dbContext.UserMatches
+                .Where(w => w.TeamId.Equals(teamId) && w.ResultTotal.HasValue)
+                .Include(i => i.User)
+                .Select(s => new LigneCategorie
+                {
+                    UserId = s.UserId,
+                    Pseudo = s.User.DisplayName,
+                    Note =
+                        cle == "composition" ? s.ResultTeamCompositionFormula :
+                        cle == "score"       ? s.ResultTeamScoreFormula :
+                        cle == "possession"  ? s.ResultTeamPossessionFormula :
+                        cle == "shots"       ? s.ResultTeamShotsFormula :
+                        cle == "fouls"       ? s.ResultTeamFoulsFormula :
+                                               s.ResultTeamCrossesFormula
+                })
+                .ToListAsync();
+
+            foreach (var g in lignes.GroupBy(gb => gb.UserId))
+            {
+                var notes = g.Where(x => x.Note.HasValue)
+                             .Select(x => x.Note!.Value)
+                             .ToList();
+                if (notes.Count == 0) { continue; }
+
+                res.Add(new UserRanking
+                {
+                    Id = g.Key,
+                    UserName = g.First().Pseudo,
+                    Score = Math.Round(notes.Average(), 4),
+                    Games = notes.Count
+                });
+            }
+
+            res = res.OrderByDescending(o => o.Score).ToList();
+            for (int i = 0; i < res.Count; i++) { res[i].Rank = i + 1; }
+
+            res = AppliquerSeuil(res, await userService.EligibiliteAllAsync(teamId));
+
+            EcrireMemoire("cat:" + cle + ":" + teamId, res);
+            return res;
+        }
+
         public async Task<List<UserRanking>> RankingByResultTotalAsync(string teamId)
         {
             var enMemoire = LireMemoire("record:" + teamId);
