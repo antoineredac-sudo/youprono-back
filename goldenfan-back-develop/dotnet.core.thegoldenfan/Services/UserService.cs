@@ -637,7 +637,7 @@ namespace dotnet.core.thegoldenfan.Services
                 .Where(w => w.EmailOptIn && w.Email != null && w.Email != ""
                          && (w.LastReminderMatchId == null || w.LastReminderMatchId != match.Id)
                          && (w.WelcomeSentAt == null || w.WelcomeSentAt < debutJournee)
-                         && !ontJoue.Contains(w.Id))
+                         )
                 .ToListAsync();
 
             // Un seul passage a la fois.
@@ -649,7 +649,8 @@ namespace dotnet.core.thegoldenfan.Services
                 foreach (var user in destinataires)
                 {
                     await EnvoyerRappelAsync(user.Email!, user.DisplayName ?? "", user.Id,
-                        adversaire, result.Affiche, heureMatch, heureCloture);
+                        adversaire, result.Affiche, heureMatch, heureCloture,
+                        ontJoue.Contains(user.Id));
 
                     // Enregistre immediatement, avant l'envoi suivant. C'est ce qui
                     // rend une interruption inoffensive : ce qui est parti est note,
@@ -669,8 +670,14 @@ namespace dotnet.core.thegoldenfan.Services
             return result;
         }
 
+        // Deux messages selon qu'on a deja pronostique ou non. Celui qui n'a rien
+        // pose recoit un rappel : il reste quelques heures. Celui qui a deja joue
+        // recoit autre chose — le groupe et les compos probables sortent le matin
+        // du match, c'est le moment d'affiner. Deux intentions differentes, donc
+        // deux textes, et jamais le meme message a tout le monde.
         private static async Task EnvoyerRappelAsync(string adresse, string pseudo, Guid userId,
-            string adversaire, string affiche, string heureMatch, string heureCloture)
+            string adversaire, string affiche, string heureMatch, string heureCloture,
+            bool aDejaJoue)
         {
             string cle = Environment.GetEnvironmentVariable("BREVO_API_KEY") ?? "";
             if (string.IsNullOrWhiteSpace(cle)) { return; }
@@ -683,38 +690,48 @@ namespace dotnet.core.thegoldenfan.Services
             // seulement pour celui qui a deja pronostique.
             // Une seule version desormais : ce message ne part qu'a ceux qui n'ont
             // pas encore pronostique.
-            const string verbe = "faire et modifier";
+            string libelleBouton = aDejaJoue ? "Modifier mes pronos" : "Je fais mes pronos";
 
-            const string libelleBouton = "Je fais mes pronos";
+            // Celui qui a deja joue : on ne lui redemande pas de jouer, on lui donne
+            // une raison de revenir. Le groupe et les compos probables sortent le
+            // matin du match — c'est le seul moment ou un prono peut encore gagner
+            // en precision.
+            string phrase = aDejaJoue
+                ? "Ce matin, tu vas conna&icirc;tre le groupe de joueurs retenus pour "
+                  + System.Net.WebUtility.HtmlEncode(affiche) + " et les compos probables de la "
+                  + "presse. C'est peut-&ecirc;tre le moment d'optimiser tes pronos."
+                : "Aujourd'hui c'est jour de match pour les supporters du PSG.";
 
             string contenu =
                 PARA + "Salut " + nom + ",</p>"
 
-              + PARA + "Aujourd'hui c'est jour de match pour les supporters du PSG.</p>"
+              + PARA + phrase + "</p>"
 
               + BlocMatchHtml(System.Net.WebUtility.HtmlEncode(affiche),
                     "Coup d'envoi &agrave; " + heureMatch + " &middot; pronos ferm&eacute;s &agrave; "
                   + heureCloture)
 
-              + PARA + "Tu peux " + verbe + " tes pr&eacute;dictions jusqu'&agrave; "
+              + PARA + "Tu peux faire et modifier tes pr&eacute;dictions jusqu'&agrave; "
               + heureCloture + ".</p>"
 
               + BoutonHtml("https://youprono.fr", libelleBouton, false, false)
 
-              + PARA + "Bon match et surtout bons pronos.</p>"
-
               + "<p style=\"font-family:" + POLICE + ";font-size:16px;line-height:1.7;"
-              + "color:" + C_OR + ";margin:22px 0 0;font-weight:bold;\">Allez Paris</p>";
+              + "color:" + C_OR + ";margin:22px 0 0;font-weight:bold;\">Bon match et allez Paris</p>";
 
             string corps = CadreHtml("Jour de match", contenu, lienStop);
 
             string texteBrut =
                 "Salut " + pseudo + ",\n\n"
-              + "Aujourd'hui c'est jour de match pour les supporters du PSG. Le coup d'envoi face a "
-              + adversaire + " aura lieu a " + heureMatch + ". Tu peux donc " + verbe
-              + " tes predictions jusqu'a " + heureCloture + ".\n\n"
+              + (aDejaJoue
+                  ? "Ce matin, tu vas connaitre le groupe de joueurs retenus pour " + affiche
+                    + " et les compos probables de la presse. C'est peut-etre le moment "
+                    + "d'optimiser tes pronos."
+                  : "Aujourd'hui c'est jour de match pour les supporters du PSG. Le coup d'envoi "
+                    + "face a " + adversaire + " aura lieu a " + heureMatch + ".")
+              + " Tu peux faire et modifier tes predictions jusqu'a " + heureCloture + ".\n\n"
               + "https://youprono.fr\n\n"
-              + "Bon match et surtout bons pronos. Allez Paris\n\n"
+              + "Bon match et allez Paris\n\n"
               + "@lepsgdantoine\n\n"
               + "---\n"
               + "Ne plus recevoir de rappel avant match : " + lienStop;
@@ -724,7 +741,9 @@ namespace dotnet.core.thegoldenfan.Services
                 sender = new { name = "YouProno", email = expediteur },
                 to = new[] { new { email = adresse } },
                 replyTo = new { email = expediteur, name = "YouProno" },
-                subject = "C'est jour de prono",
+                subject = aDejaJoue
+                    ? "Optimise tes pronos avant la clôture"
+                    : "C'est jour de prono",
                 htmlContent = corps,
                 textContent = texteBrut,
                 headers = new Dictionary<string, string>
