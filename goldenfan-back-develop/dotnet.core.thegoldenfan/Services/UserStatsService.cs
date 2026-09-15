@@ -985,6 +985,12 @@ namespace dotnet.core.thegoldenfan.Services
             public int Count { get; set; }
             public MoyenneValeurs Team { get; set; } = new();
             public MoyenneValeurs Opponent { get; set; } = new();
+
+            // Le onze le plus pronostique du match : les onze joueurs qui revenaient
+            // le plus souvent dans les compositions. C'est l'equivalent, pour la
+            // composition, de la moyenne des chiffres — il n'y a pas de « moyenne »
+            // d'une liste de noms, mais il y a un onze majoritaire.
+            public List<string> TopPlayers { get; set; } = new();
         }
 
         public async Task<MoyennePronosResult> MoyennePronosAsync(string teamId, string? matchId = null)
@@ -1030,6 +1036,17 @@ namespace dotnet.core.thegoldenfan.Services
                 Crosses = Math.Round(pronos.Average(a => (double)a.PreOpponentCrosses), 1),
                 Score = Math.Round(pronos.Average(a => (double)a.PreOpponentScore), 1)
             };
+
+            res.TopPlayers = await dbContext.UserPlayerForMatches
+                .AsNoTracking()
+                .Where(w => w.UserMatch.TeamId.Equals(teamId) && w.UserMatch.MatchId.Equals(cible))
+                .GroupBy(gb => gb.PersonId)
+                .Select(g => new { PersonId = g.Key, Nb = g.Count() })
+                .OrderByDescending(o => o.Nb)
+                .Take(11)
+                .Select(s => s.PersonId)
+                .ToListAsync();
+
             return res;
         }
 
