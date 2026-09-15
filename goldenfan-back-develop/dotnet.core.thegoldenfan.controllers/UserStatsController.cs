@@ -155,6 +155,24 @@ namespace dotnet.core.thegoldenfan.controllers
             }
             return res;
         }
+        // La courbe du tableau de bord : les derniers matchs du joueur, forfaits
+        // compris. Sert a ce que la moyenne dessinee corresponde au coef expert.
+        [HttpGet("Courbe/{userId}/{teamId}")]
+        public async Task<ResponseModel<List<CourbePoint>>> CourbeAsync(Guid userId, string teamId, int limit = 10)
+        {
+            ResponseModel<List<CourbePoint>> res = ResponseModel<List<CourbePoint>>.CreateDefault();
+            try
+            {
+                var obj = await service.CourbeAsync(userId, teamId, limit);
+                res = new ResponseModel<List<CourbePoint>>(0, obj);
+            }
+            catch (Exception ex)
+            {
+                res = ResponseModel<List<CourbePoint>>.Exception(ex);
+            }
+            return res;
+        }
+
         // Le classement d'un match, de la meilleure note a la plus basse.
         // Sans matchId, c'est celui du dernier match note.
         [HttpGet("MatchRanking/{teamId}")]
