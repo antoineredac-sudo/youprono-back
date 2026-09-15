@@ -961,6 +961,98 @@ namespace dotnet.core.thegoldenfan.Services
                 .FirstOrDefaultAsync();
         }
 
+        // ===== LA COURBE DU TABLEAU DE BORD =====
+        // Les derniers matchs d'un joueur, forfaits compris. L'historique ne liste
+        // que les matchs joues : une courbe batie dessus afficherait une moyenne
+        // pointillee plus haute que le coef expert affiche juste au-dessus, puisque
+        // celui-ci compte les forfaits. On sert donc ici les deux, chaque point
+        // disant s'il vient d'un pronostic ou d'une absence.
+        public sealed class CourbePoint
+        {
+            public string? MatchId { get; set; }
+            public DateTime Date { get; set; }
+            public string? Opponent { get; set; }
+            public double Score { get; set; }
+            public bool IsForfait { get; set; }
+        }
+
+        public async Task<List<CourbePoint>> CourbeAsync(Guid userId, string teamId, int limit = 10)
+        {
+            var res = new List<CourbePoint>();
+            if (string.IsNullOrWhiteSpace(teamId)) { return res; }
+
+            var inscrit = await dbContext.Users
+                .AsNoTracking()
+                .Where(w => w.Id.Equals(userId))
+                .Select(s => s.DateCreated)
+                .FirstOrDefaultAsync();
+
+            // Toutes les notes de l'equipe, match par match.
+            var lignes = await dbContext.UserMatches
+                .Where(w => w.TeamId.Equals(teamId) && w.ResultTotal.HasValue)
+                .Include(i => i.Match).ThenInclude(m => m.HomeTeam).ThenInclude(t => t.Team)
+                .Include(i => i.Match).ThenInclude(m => m.AwayTeam).ThenInclude(t => t.Team)
+                .Select(s => new
+                {
+                    s.UserId,
+                    s.MatchId,
+                    Note = s.ResultTotal!.Value,
+                    s.Match.DateTime,
+                    Domicile = s.Match.HomeTeam.TeamId,
+                    NomDomicile = s.Match.HomeTeam.Team.OfficialName,
+                    NomExterieur = s.Match.AwayTeam.Team.OfficialName
+                })
+                .ToListAsync();
+
+            foreach (var g in lignes.GroupBy(gb => gb.MatchId)
+                                    .OrderByDescending(o => o.First().DateTime))
+            {
+                if (res.Count >= limit) { break; }
+
+                var premier = g.First();
+                var sienne = g.FirstOrDefault(f => f.UserId.Equals(userId));
+
+                double note;
+                bool forfait;
+
+                if (sienne != null)
+                {
+                    note = sienne.Note;
+                    forfait = false;
+                }
+                else
+                {
+                    // Il n'a pas joue : le match ne compte que s'il etait inscrit
+                    // avant la cloture, et s'il y avait assez de participants.
+                    DateTime clotureUtc = GroupService.ParisToUtc(
+                        premier.DateTime.AddHours(-GroupService.ClotureAvantHeures));
+                    if (clotureUtc < inscrit) { continue; }
+
+                    var valeur = UserService.NoteDeForfait(g.Select(x => x.Note).ToList());
+                    if (valeur == null) { continue; }
+
+                    note = valeur.Value;
+                    forfait = true;
+                }
+
+                string adversaire = premier.Domicile.Equals(teamId)
+                    ? (premier.NomExterieur ?? "")
+                    : (premier.NomDomicile ?? "");
+
+                res.Add(new CourbePoint
+                {
+                    MatchId = premier.MatchId,
+                    Date = premier.DateTime,
+                    Opponent = adversaire,
+                    Score = Math.Round(note, 3),
+                    IsForfait = forfait
+                });
+            }
+
+            // Du plus ancien au plus recent : c'est l'ordre du dessin.
+            return res.OrderBy(o => o.Date).ToList();
+        }
+
         // ===== LE CLASSEMENT DU DERNIER MATCH =====
         // Toutes les notes d'un match, de la meilleure a la plus basse. Le jeu
         // savait deja dire a chacun son rang — « 8e sur 11 » — mais nulle part on
