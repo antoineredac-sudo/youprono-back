@@ -961,6 +961,78 @@ namespace dotnet.core.thegoldenfan.Services
                 .FirstOrDefaultAsync();
         }
 
+        // ===== LA MOYENNE DES PRONOSTICS D'UN MATCH =====
+        // Ce que les joueurs avaient annonce, en moyenne, sur un match deja note.
+        // Sert a etalonner un nouvel inscrit : il decouvre l'ordre de grandeur des
+        // chiffres avant son premier prono, au lieu de saisir au hasard.
+        //
+        // Toujours sur un match PASSE, jamais sur celui a venir : montrer la moyenne
+        // d'un match ouvert ferait converger tout le monde vers elle et aplatirait
+        // le jeu. Sur un match joue, c'est un etalon ; sur un match a venir, ce
+        // serait une antiseche.
+        public sealed class MoyenneValeurs
+        {
+            public double Possession { get; set; }
+            public double Shots { get; set; }
+            public double Fouls { get; set; }
+            public double Crosses { get; set; }
+            public double Score { get; set; }
+        }
+
+        public sealed class MoyennePronosResult
+        {
+            public string? MatchId { get; set; }
+            public int Count { get; set; }
+            public MoyenneValeurs Team { get; set; } = new();
+            public MoyenneValeurs Opponent { get; set; } = new();
+        }
+
+        public async Task<MoyennePronosResult> MoyennePronosAsync(string teamId, string? matchId = null)
+        {
+            var res = new MoyennePronosResult();
+            if (string.IsNullOrWhiteSpace(teamId)) { return res; }
+
+            string? cible = string.IsNullOrWhiteSpace(matchId)
+                ? await DernierMatchNoteAsync(teamId)
+                : matchId;
+            if (cible == null) { return res; }
+
+            res.MatchId = cible;
+
+            var pronos = await dbContext.UserMatches
+                .AsNoTracking()
+                .Where(w => w.TeamId.Equals(teamId) && w.MatchId.Equals(cible))
+                .Select(s => new
+                {
+                    s.PreTeamPossession, s.PreTeamShots, s.PreTeamFouls,
+                    s.PreTeamCrosses, s.PreTeamScore,
+                    s.PreOpponentPossession, s.PreOpponentShots, s.PreOpponentFouls,
+                    s.PreOpponentCrosses, s.PreOpponentScore
+                })
+                .ToListAsync();
+
+            res.Count = pronos.Count;
+            if (pronos.Count == 0) { return res; }
+
+            res.Team = new MoyenneValeurs
+            {
+                Possession = Math.Round(pronos.Average(a => a.PreTeamPossession), 1),
+                Shots = Math.Round(pronos.Average(a => (double)a.PreTeamShots), 1),
+                Fouls = Math.Round(pronos.Average(a => (double)a.PreTeamFouls), 1),
+                Crosses = Math.Round(pronos.Average(a => (double)a.PreTeamCrosses), 1),
+                Score = Math.Round(pronos.Average(a => (double)a.PreTeamScore), 1)
+            };
+            res.Opponent = new MoyenneValeurs
+            {
+                Possession = Math.Round(pronos.Average(a => a.PreOpponentPossession), 1),
+                Shots = Math.Round(pronos.Average(a => (double)a.PreOpponentShots), 1),
+                Fouls = Math.Round(pronos.Average(a => (double)a.PreOpponentFouls), 1),
+                Crosses = Math.Round(pronos.Average(a => (double)a.PreOpponentCrosses), 1),
+                Score = Math.Round(pronos.Average(a => (double)a.PreOpponentScore), 1)
+            };
+            return res;
+        }
+
         // ===== LA COURBE DU TABLEAU DE BORD =====
         // Les derniers matchs d'un joueur, forfaits compris. L'historique ne liste
         // que les matchs joues : une courbe batie dessus afficherait une moyenne
