@@ -234,6 +234,27 @@ namespace dotnet.core.thegoldenfan.controllers
             return res;
         }
 
+        // Suppression d'un compte vierge. Usage privé du fondateur, depuis Swagger :
+        // le code d'accès, l'identifiant et le pseudo doivent concorder, et un
+        // compte qui a déjà pronostiqué est refusé. En POST et jamais en GET,
+        // pour qu'aucune visite d'adresse (navigateur, robot, UptimeRobot) ne
+        // puisse déclencher une suppression.
+        [HttpPost("Delete/{accessCode}/{userId}/{displayName}")]
+        public async Task<ResponseModel<DeleteAccountResult>> DeleteAccountAsync(string accessCode, Guid userId, string displayName)
+        {
+            ResponseModel<DeleteAccountResult> res = ResponseModel<DeleteAccountResult>.CreateDefault();
+            try
+            {
+                var obj = await service.DeleteAccountAsync(accessCode, userId, displayName);
+                res = new ResponseModel<DeleteAccountResult>(0, obj);
+            }
+            catch (Exception ex)
+            {
+                res = ResponseModel<DeleteAccountResult>.Exception(ex);
+            }
+            return res;
+        }
+
         [HttpGet("AttendanceBonus/{userId}/{teamId}")]
         public async Task<ResponseModel<double>> AttendanceBonusAsync(Guid userId, string teamId)
         {
