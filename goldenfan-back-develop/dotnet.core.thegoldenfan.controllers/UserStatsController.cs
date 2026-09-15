@@ -155,6 +155,23 @@ namespace dotnet.core.thegoldenfan.controllers
             }
             return res;
         }
+        // La moyenne des pronostics sur un match deja note. Sans matchId, le dernier.
+        [HttpGet("MoyennePronos/{teamId}")]
+        public async Task<ResponseModel<MoyennePronosResult>> MoyennePronosAsync(string teamId)
+        {
+            ResponseModel<MoyennePronosResult> res = ResponseModel<MoyennePronosResult>.CreateDefault();
+            try
+            {
+                var obj = await service.MoyennePronosAsync(teamId);
+                res = new ResponseModel<MoyennePronosResult>(0, obj);
+            }
+            catch (Exception ex)
+            {
+                res = ResponseModel<MoyennePronosResult>.Exception(ex);
+            }
+            return res;
+        }
+
         // La courbe du tableau de bord : les derniers matchs du joueur, forfaits
         // compris. Sert a ce que la moyenne dessinee corresponde au coef expert.
         [HttpGet("Courbe/{userId}/{teamId}")]
