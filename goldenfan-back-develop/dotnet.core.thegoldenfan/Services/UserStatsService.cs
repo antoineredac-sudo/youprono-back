@@ -1290,7 +1290,11 @@ namespace dotnet.core.thegoldenfan.Services
                         Id = item.Key,
                         UserName = item.First().User.DisplayName,
                         Score = coefs[item.Key],
-                        Games = item.Count()
+                        // Seuls les matchs deja notes comptent. item.Count() prenait
+                        // aussi les pronos du match a venir : un joueur qui avait
+                        // pronostique le prochain match voyait « 4 matchs » pour 3
+                        // joues (corrige le 16 septembre 2026).
+                        Games = item.Count(w => w.ResultTotal != null)
                     };
                     res.Add(obj);
                 }
@@ -1424,7 +1428,9 @@ namespace dotnet.core.thegoldenfan.Services
                         Id = item.Key,
                         UserName = u == null ? "" : u.DisplayName,
                         Score = rt.HasValue ? rt.Value : 0,
-                        Games = item.Count()
+                        // Meme correction que pour le coef expert : les matchs notes
+                        // seulement, pas le prono du match a venir.
+                        Games = lo.Count
                     };
                     res.Add(obj);
                 }
