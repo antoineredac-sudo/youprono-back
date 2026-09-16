@@ -297,5 +297,124 @@ namespace dotnet.core.thegoldenfan.Services
                 await dbContext.SaveChangesAsync();
             }
         }
+
+        // ===== LA TENDANCE DES PRONOS (16 septembre 2026) =====
+        // Pour le fondateur, qui veut partager sur X la répartition des pronos :
+        // combien voient Paris gagner, un nul, l'adversaire gagner, et le score
+        // le plus pronostiqué. Données agrégées uniquement, aucun pseudo.
+        // Protégée par le même code que la liste des inscrits, parce que le site
+        // n'affiche pas encore cette répartition : la montrer aux joueurs avant la
+        // clôture reste une décision à prendre.
+        // ATTENTION : ce code est écrit en dur ici ET dans UserService.cs. Le jour
+        // où il sera déplacé dans une variable de Render, penser aux deux fichiers.
+        private const string TendanceAccessCode = "psg2026";
+
+        public sealed class TendanceResult
+        {
+            public string? MatchId { get; set; }
+            public string? Affiche { get; set; }
+            public DateTime? CoupDEnvoi { get; set; }
+            public bool PronosClos { get; set; }
+            public int Pronos { get; set; }
+            public int VictoirePsg { get; set; }
+            public int Nul { get; set; }
+            public int VictoireAdversaire { get; set; }
+            public int PourcentVictoirePsg { get; set; }
+            public int PourcentNul { get; set; }
+            public int PourcentVictoireAdversaire { get; set; }
+            public string? ScoreLePlusPronostique { get; set; }
+            public int PronosSurCeScore { get; set; }
+        }
+
+        private static string NomDuCote(TeamMatch? cote)
+        {
+            var t = cote?.Team;
+            if (t == null) { return ""; }
+            if (!string.IsNullOrWhiteSpace(t.OfficialName)) { return t.OfficialName!; }
+            if (!string.IsNullOrWhiteSpace(t.Name)) { return t.Name; }
+            if (!string.IsNullOrWhiteSpace(t.ShortName)) { return t.ShortName!; }
+            return "";
+        }
+
+        // Sans matchId : le prochain match de l'équipe. Il le reste jusqu'à trois
+        // heures après le coup d'envoi, pour pouvoir relire la répartition le soir
+        // même. Avec matchId : n'importe quel match, passé ou à venir.
+        public async Task<TendanceResult> TendanceAsync(string accessCode, string teamId, string? matchId)
+        {
+            string src = "UserMatchService.TendanceAsync";
+            if (string.IsNullOrWhiteSpace(accessCode) ||
+                !accessCode.Trim().Equals(TendanceAccessCode, StringComparison.OrdinalIgnoreCase))
+            { throw BaseException.InvalidModel(-1, src); }
+
+            DateTime maintenantParis = TimeZoneInfo.ConvertTimeFromUtc(
+                DateTime.UtcNow, GroupService.ParisTimeZoneInfo);
+
+            var requete = dbContext.Matches
+                .Include(i => i.HomeTeam).ThenInclude(t => t.Team)
+                .Include(i => i.AwayTeam).ThenInclude(t => t.Team)
+                .Where(w => w.HomeTeam.TeamId.Equals(teamId) || w.AwayTeam.TeamId.Equals(teamId));
+
+            Match? match;
+            if (string.IsNullOrWhiteSpace(matchId))
+            {
+                DateTime limite = maintenantParis.AddHours(-3);
+                match = await requete
+                    .Where(w => w.DateTime > limite)
+                    .OrderBy(o => o.DateTime)
+                    .FirstOrDefaultAsync();
+            }
+            else
+            {
+                match = await requete.FirstOrDefaultAsync(w => w.Id.Equals(matchId));
+            }
+            if (match == null)
+            { throw new BaseException(-2, src, "Aucun match trouvé pour cette équipe."); }
+
+            bool psgRecoit = match.HomeTeam.TeamId.Equals(teamId);
+            string domicile = NomDuCote(match.HomeTeam);
+            string exterieur = NomDuCote(match.AwayTeam);
+
+            var res = new TendanceResult
+            {
+                MatchId = match.Id,
+                Affiche = domicile + " - " + exterieur,
+                CoupDEnvoi = match.DateTime,
+                PronosClos = maintenantParis >= match.DateTime.AddHours(-GroupService.ClotureAvantHeures)
+            };
+
+            // PreTeamScore est toujours le score prévu pour l'équipe du joueur (le
+            // PSG), PreOpponentScore celui de l'adversaire, quel que soit le terrain.
+            var scores = await dbContext.UserMatches
+                .Where(w => w.MatchId.Equals(match.Id) && w.TeamId.Equals(teamId))
+                .Select(s => new { Psg = s.PreTeamScore, Adv = s.PreOpponentScore })
+                .ToListAsync();
+
+            res.Pronos = scores.Count;
+            if (res.Pronos == 0) { return res; }
+
+            res.VictoirePsg = scores.Count(c => c.Psg > c.Adv);
+            res.Nul = scores.Count(c => c.Psg == c.Adv);
+            res.VictoireAdversaire = scores.Count(c => c.Psg < c.Adv);
+
+            // Arrondi à l'unité : la somme peut faire 99 ou 101, les effectifs
+            // bruts sont là pour trancher.
+            res.PourcentVictoirePsg = (int)Math.Round(100.0 * res.VictoirePsg / res.Pronos, MidpointRounding.AwayFromZero);
+            res.PourcentNul = (int)Math.Round(100.0 * res.Nul / res.Pronos, MidpointRounding.AwayFromZero);
+            res.PourcentVictoireAdversaire = (int)Math.Round(100.0 * res.VictoireAdversaire / res.Pronos, MidpointRounding.AwayFromZero);
+
+            // Le score le plus pronostiqué, écrit dans l'ordre de l'affiche
+            // (domicile d'abord), comme on l'écrirait dans un tweet.
+            var top = scores
+                .GroupBy(g => new { g.Psg, g.Adv })
+                .OrderByDescending(o => o.Count())
+                .ThenByDescending(o => o.Key.Psg - o.Key.Adv)
+                .First();
+            int butsDomicile = psgRecoit ? top.Key.Psg : top.Key.Adv;
+            int butsExterieur = psgRecoit ? top.Key.Adv : top.Key.Psg;
+            res.ScoreLePlusPronostique = domicile + " " + butsDomicile + " - " + butsExterieur + " " + exterieur;
+            res.PronosSurCeScore = top.Count();
+
+            return res;
+        }
     }
 }
