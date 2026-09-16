@@ -743,6 +743,26 @@ namespace dotnet.core.thegoldenfan.Services
             if (isComplete && ranking.Count > 0 && ranking[0].TotalScore > 0)
             { championName = ranking[0].DisplayName; }
 
+            // Les nouveaux arrivés (16 septembre 2026) : un membre entré après la
+            // clôture du dernier match compté n'a pas de place au classement, mais
+            // il doit apparaître dans la liste, sinon il croit ne pas être dans le
+            // groupe. Ajouté en fin de liste, rang 0 et aucun match : le site
+            // affiche « aucun match joué ». Placé après le champion et les
+            // mouvements, il ne change ni l'un ni les autres.
+            var dejaClasses = ranking.Select(r => r.UserId).ToHashSet();
+            ranking.AddRange(group.Members
+                .Where(m => !dejaClasses.Contains(m.UserId))
+                .OrderBy(m => m.DateJoined)
+                .Select(m => new GroupMemberRankingResult
+                {
+                    UserId = m.UserId,
+                    DisplayName = m.User.DisplayName ?? "?",
+                    TotalScore = 0,
+                    MatchesPlayed = 0,
+                    ExpertCoef = 0,
+                    Rank = 0
+                }));
+
             return new GroupDetailsResult
             {
                 Id = group.Id,
