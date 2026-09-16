@@ -94,9 +94,12 @@ namespace dotnet.core.thegoldenfan.Services
         // Au-dela, le nom ne tient plus dans le message de partage sur X.
         private const int KopNameMaxLength = 30;
 
-        // Un kop d'un seul membre n'est pas affiche dans la liste : il disparait tout
-        // seul sans qu'on ait a le supprimer, et son lien direct continue de marcher.
-        private const int KopMinMembersToList = 2;
+        // Tous les kops sont listes, meme a un seul membre (decision d'Antoine du
+        // 16 septembre 2026) : un kop tout juste ouvert, comme celui d'un media qui
+        // n'a pas encore invite son public, doit pouvoir etre trouve. Avant, il
+        // fallait deux membres pour apparaitre. Un kop vide n'existe pas : le
+        // dernier membre qui part le supprime.
+        private const int KopMinMembersToList = 1;
 
         private static string NormalizeType(string? type)
         {
