@@ -217,6 +217,9 @@ namespace dotnet.core.thegoldenfan.Services
             public string? ChampionName { get; set; } = null;
             public List<GroupMemberRankingResult> Ranking { get; set; } = new();
 
+            // Le nombre de membres en sommeil, retirés du classement affiché.
+            public int SleepingCount { get; set; }
+
             // La meilleure note jamais obtenue par un membre du groupe, avec la
             // forme de ce match-là. Null tant que personne n'a de note.
             public GroupRecordResult? Record { get; set; }
@@ -442,6 +445,70 @@ namespace dotnet.core.thegoldenfan.Services
             return membre.DateJoined <= clotureUtc;
         }
 
+        // ===== LA MISE EN SOMMEIL (décidée par Antoine le 16 septembre 2026) =====
+        // Un membre qui n'a pronostiqué aucun des trois derniers matchs clos du PSG
+        // est « en sommeil ». Pour un membre arrivé récemment, seuls comptent les
+        // matchs clos depuis son arrivée : il faut qu'il en ait déjà manqué trois.
+        // Il se réveille dès qu'il enregistre un prono pour un match à venir.
+        //   - un dormeur ne compte plus dans les dix places d'un groupe d'amis ;
+        //   - il disparaît du classement affiché (ses anciens points restent dans
+        //     le calcul des autres, rien ne bouge pour eux) ;
+        //   - rien n'est écrit en base : le statut se déduit à chaque lecture.
+        private const int MatchsManquesPourSommeil = 3;
+
+        private async Task<HashSet<Guid>> MembresEnSommeilAsync(IEnumerable<GroupMember> membres)
+        {
+            var liste = membres.ToList();
+            var dormeurs = new HashSet<Guid>();
+            if (liste.Count == 0) { return dormeurs; }
+
+            DateTime maintenantParis = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, ParisTimeZone);
+            // Un match est clos deux heures avant son coup d'envoi : il l'est donc
+            // dès que son coup d'envoi tombe avant « maintenant + 2 heures ».
+            DateTime limiteClos = maintenantParis.AddHours(ClotureAvantHeures);
+
+            DateTime premiereArrivee = TimeZoneInfo.ConvertTimeFromUtc(
+                DateTime.SpecifyKind(liste.Min(m => m.DateJoined), DateTimeKind.Utc), ParisTimeZone);
+
+            var matchsClos = await dbContext.Matches
+                .Where(w => w.DateTime <= limiteClos && w.DateTime >= premiereArrivee)
+                .OrderByDescending(o => o.DateTime)
+                .Select(s => new { s.Id, s.DateTime })
+                .ToListAsync();
+
+            var ids = liste.Select(m => m.UserId).ToList();
+            var idsClos = matchsClos.Select(s => s.Id).ToList();
+            var idsAVenir = await dbContext.Matches
+                .Where(w => w.DateTime > limiteClos)
+                .Select(s => s.Id)
+                .ToListAsync();
+
+            var pronos = await dbContext.UserMatches
+                .Where(w => ids.Contains(w.UserId)
+                         && (idsClos.Contains(w.MatchId) || idsAVenir.Contains(w.MatchId)))
+                .Select(s => new { s.UserId, s.MatchId })
+                .ToListAsync();
+
+            var aVenir = idsAVenir.ToHashSet();
+            foreach (var m in liste)
+            {
+                var sesPronos = pronos.Where(p => p.UserId.Equals(m.UserId)).Select(p => p.MatchId).ToHashSet();
+
+                // Réveillé : un prono déjà posé sur un match à venir.
+                if (sesPronos.Any(id => aVenir.Contains(id))) { continue; }
+
+                var derniers = matchsClos
+                    .Where(x => EtaitPresent(m, x.DateTime))
+                    .Take(MatchsManquesPourSommeil)
+                    .Select(x => x.Id)
+                    .ToList();
+                if (derniers.Count < MatchsManquesPourSommeil) { continue; }
+
+                if (!derniers.Any(id => sesPronos.Contains(id))) { dormeurs.Add(m.UserId); }
+            }
+            return dormeurs;
+        }
+
         // Un code court, lisible, sans caractères ambigus (pas de 0/O ni de 1/I)
         private static string GenerateInviteCode()
         {
@@ -524,8 +591,9 @@ namespace dotnet.core.thegoldenfan.Services
             {
                 await EnsureNoOtherKopAsync(userId, src);
             }
-            else if (group.Members.Count >= MaxMembers)
+            else if (group.Members.Count - (await MembresEnSommeilAsync(group.Members)).Count >= MaxMembers)
             {
+                // Seuls les membres éveillés occupent une place (16 septembre 2026).
                 throw BaseException.InvalidModel(-4, src);
             }
 
@@ -628,6 +696,9 @@ namespace dotnet.core.thegoldenfan.Services
 
             var memberIds = group.Members.Select(m => m.UserId).ToList();
 
+            // Les membres en sommeil sont retirés de la liste affichée, pas du calcul.
+            var dormeurs = await MembresEnSommeilAsync(group.Members);
+
             // On récupère la note DU MATCH (ResultTotal), et non la moyenne de saison
             // (ResultFinalTotal), qui ne sert ici qu'à départager les ex aequo.
             var predictions = await dbContext.UserMatches
@@ -672,7 +743,7 @@ namespace dotnet.core.thegoldenfan.Services
                     : DateTime.MaxValue;
 
                 return group.Members
-                    .Where(w => EtaitPresent(w, borne))
+                    .Where(w => EtaitPresent(w, borne) && !dormeurs.Contains(w.UserId))
                     .Select(m => new GroupMemberRankingResult
                 {
                     UserId = m.UserId,
@@ -754,7 +825,7 @@ namespace dotnet.core.thegoldenfan.Services
             // mouvements, il ne change ni l'un ni les autres.
             var dejaClasses = ranking.Select(r => r.UserId).ToHashSet();
             ranking.AddRange(group.Members
-                .Where(m => !dejaClasses.Contains(m.UserId))
+                .Where(m => !dejaClasses.Contains(m.UserId) && !dormeurs.Contains(m.UserId))
                 .OrderBy(m => m.DateJoined)
                 .Select(m => new GroupMemberRankingResult
                 {
@@ -781,6 +852,7 @@ namespace dotnet.core.thegoldenfan.Services
                 CycleNumber = cycleIndex + 1,
                 ChampionName = championName,
                 Ranking = ranking,
+                SleepingCount = dormeurs.Count,
                 Record = await RecordDuGroupeAsync(memberIds, group.Members)
             };
         }
@@ -2238,13 +2310,15 @@ namespace dotnet.core.thegoldenfan.Services
                 .FirstOrDefaultAsync(w => w.InviteCode.Equals(code));
             if (group == null) { throw BaseException.NotFound(-2, src); }
 
+            int endormis = IsKop(group.Type) ? 0 : (await MembresEnSommeilAsync(group.Members)).Count;
+
             return new GroupByCodeResult
             {
                 Id = group.Id,
                 Name = group.Name,
                 Type = group.Type,
                 MemberCount = group.Members.Count,
-                IsFull = !IsKop(group.Type) && group.Members.Count >= MaxMembers,
+                IsFull = !IsKop(group.Type) && group.Members.Count - endormis >= MaxMembers,
                 AlreadyMember = userId.HasValue && group.Members.Any(a => a.UserId.Equals(userId.Value))
             };
         }
