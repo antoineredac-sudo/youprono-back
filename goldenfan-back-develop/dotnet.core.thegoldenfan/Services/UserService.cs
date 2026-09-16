@@ -1156,10 +1156,18 @@ namespace dotnet.core.thegoldenfan.Services
             if (model == null || StringHelper.IsNull(model.Email))
             { throw BaseException.InvalidModel(-1, src); }
 
-            string adresse = model.Email.Trim().ToLower();
+            // Même comparaison qu'à l'inscription (16 septembre 2026) : sans elle,
+            // un joueur refusé pour « jean.dupont@gmail.com » parce que son compte
+            // porte « jeandupont@gmail.com » ne recevrait jamais le courriel.
+            // S'il reste plusieurs comptes sur la même adresse (ceux d'avant la
+            // règle), on prend le plus ancien, au lieu d'un compte au hasard.
+            string adresse = NormaliserAdresse(model.Email);
 
-            var user = await dbContext.Users
-                .FirstOrDefaultAsync(w => w.Email != null && w.Email.ToLower().Equals(adresse));
+            var candidats = await dbContext.Users
+                .Where(w => w.Email != null && w.Email != "")
+                .OrderBy(o => o.DateCreated)
+                .ToListAsync();
+            var user = candidats.FirstOrDefault(w => NormaliserAdresse(w.Email!) == adresse);
 
             // Adresse inconnue : on ne dit rien et on renvoie le meme succes.
             if (user == null) { return true; }
