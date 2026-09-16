@@ -121,6 +121,41 @@ namespace dotnet.core.thegoldenfan.controllers
             return res;
         }
 
+        // La répartition des pronos (victoire du PSG, nul, victoire de l'adversaire)
+        // et le score le plus pronostiqué. Lecture seule, données agrégées, code
+        // d'accès exigé. Sans matchId : le prochain match. S'ouvre dans un navigateur.
+        [HttpGet("Tendance/{accessCode}/{teamId}")]
+        public async Task<ResponseModel<UserMatchService.TendanceResult>> TendanceProchainMatchAsync(string accessCode, string teamId)
+        {
+            ResponseModel<UserMatchService.TendanceResult> res = ResponseModel<UserMatchService.TendanceResult>.CreateDefault();
+            try
+            {
+                var obj = await service.TendanceAsync(accessCode, teamId, null);
+                res = new ResponseModel<UserMatchService.TendanceResult>(0, obj);
+            }
+            catch (Exception ex)
+            {
+                res = ResponseModel<UserMatchService.TendanceResult>.Exception(ex);
+            }
+            return res;
+        }
+
+        [HttpGet("Tendance/{accessCode}/{teamId}/{matchId}")]
+        public async Task<ResponseModel<UserMatchService.TendanceResult>> TendanceMatchAsync(string accessCode, string teamId, string matchId)
+        {
+            ResponseModel<UserMatchService.TendanceResult> res = ResponseModel<UserMatchService.TendanceResult>.CreateDefault();
+            try
+            {
+                var obj = await service.TendanceAsync(accessCode, teamId, matchId);
+                res = new ResponseModel<UserMatchService.TendanceResult>(0, obj);
+            }
+            catch (Exception ex)
+            {
+                res = ResponseModel<UserMatchService.TendanceResult>.Exception(ex);
+            }
+            return res;
+        }
+
         [HttpPut("ReplaceMatch/{originalMatchId}/{newMatchId}")]
         public async Task<ResponseModel<bool>> ReplaceMatchAsync(string originalMatchId, string newMatchId)
         {
