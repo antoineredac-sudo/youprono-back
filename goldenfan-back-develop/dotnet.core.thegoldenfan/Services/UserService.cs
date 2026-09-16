@@ -1571,6 +1571,49 @@ namespace dotnet.core.thegoldenfan.Services
                    && !e.Contains(' ');
         }
 
+        // --- Une adresse, un seul compte (16 septembre 2026) ---
+        // Deux adresses qui arrivent dans la même boîte sont ramenées à la même
+        // forme : casse ignorée partout, et pour Gmail, points et « +suffixe »
+        // ignorés, puisque Gmail les ignore lui-même (jean.dupont+2@gmail.com
+        // et jeandupont@gmail.com sont une seule boîte). Les autres messageries
+        // ne sont pas touchées : leurs règles d'alias varient, et une erreur
+        // bloquerait un vrai joueur.
+        // Les doublons créés avant cette règle restent en place : la contrainte
+        // est vérifiée ici, dans le code, et non en base.
+        private static string NormaliserAdresse(string email)
+        {
+            string e = (email ?? "").Trim().ToLowerInvariant();
+            int at = e.LastIndexOf('@');
+            if (at <= 0) { return e; }
+            string local = e.Substring(0, at);
+            string domaine = e.Substring(at + 1);
+            if (domaine == "gmail.com" || domaine == "googlemail.com")
+            {
+                int plus = local.IndexOf('+');
+                if (plus >= 0) { local = local.Substring(0, plus); }
+                local = local.Replace(".", "");
+                domaine = "gmail.com";
+            }
+            return local + "@" + domaine;
+        }
+
+        // Vrai si un autre compte que « saufUserId » porte déjà cette adresse.
+        // La comparaison se fait après normalisation, donc en mémoire : on ne
+        // charge que les adresses, ce qui reste léger même avec des milliers
+        // d'inscrits.
+        private async Task<bool> AdresseDejaPriseAsync(string email, Guid? saufUserId)
+        {
+            string cible = NormaliserAdresse(email);
+            // Guid.Empty n'est jamais l'identifiant d'un compte : sans exclusion,
+            // la condition laisse donc passer tout le monde.
+            Guid exclu = saufUserId ?? Guid.Empty;
+            var adresses = await dbContext.Users
+                .Where(w => w.Email != null && w.Email != "" && w.Id != exclu)
+                .Select(w => w.Email!)
+                .ToListAsync();
+            return adresses.Any(a => NormaliserAdresse(a) == cible);
+        }
+
         // Ce que le site demande apres chaque connexion, pour savoir s'il doit
         // reclamer l'adresse a un joueur inscrit avant cette version.
         public async Task<EmailStatusResult> EmailStatusAsync(Guid userId)
@@ -1597,6 +1640,11 @@ namespace dotnet.core.thegoldenfan.Services
             var user = await dbContext.Users.FirstOrDefaultAsync(w => w.Id.Equals(userId));
             if (user == null) { throw BaseException.NotFound(-2, src); }
 
+            // Code -3 : « adresse déjà liée à un autre compte ». Le compte lui-même
+            // est exclu de la recherche : réenregistrer sa propre adresse passe.
+            if (await AdresseDejaPriseAsync(model.Email, userId))
+            { throw BaseException.InvalidModel(-3, src); }
+
             user.Email = model.Email.Trim();
             user.EmailOptIn = model.EmailOptIn;
             await dbContext.SaveChangesAsync();
@@ -1621,6 +1669,13 @@ namespace dotnet.core.thegoldenfan.Services
             string pseudo = model.DisplayName.Trim();
             if (pseudo.Length < PSEUDO_MIN || pseudo.Length > PSEUDO_MAX)
             { throw BaseException.InvalidModel(-4, src); }
+
+            // Code -5 : « adresse déjà liée à un compte ». Vérifié avant le pseudo :
+            // quelqu'un qui revient créer un compte a sans doute oublié le sien,
+            // et c'est vers la récupération qu'il faut l'orienter, pas vers un
+            // autre pseudo.
+            if (await AdresseDejaPriseAsync(model.Email, null))
+            { throw BaseException.InvalidModel(-5, src); }
 
             var normalized = StringHelper.NormalizeString(pseudo);
             var existing = await dbContext.Users.FirstOrDefaultAsync(w => w.NormalizedDisplayName!.Equals(normalized));
