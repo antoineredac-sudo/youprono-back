@@ -25,7 +25,10 @@ namespace dotnet.core.thegoldenfan.Services
         }
 
         private const int MinMembers = 2;
-        private const int MaxMembers = 10;
+        // Onze membres au maximum depuis le 17 septembre 2026 : onze comme une
+        // equipe de foot. Le bareme des points etant ancre sur le dernier present,
+        // et non sur la taille du groupe, ce plafond ne change aucun seuil de ballon.
+        private const int MaxMembers = 11;
 
         // Un mini-championnat dure 5 matchs du PSG, toutes compétitions confondues.
         private const int SeasonLength = 5;
@@ -77,7 +80,7 @@ namespace dotnet.core.thegoldenfan.Services
         private const int MinMembersForMedal = 3;
 
         // --- Les deux natures de groupe ---
-        // "amis" : le groupe historique. Dix membres au maximum, bareme positionnel,
+        // "amis" : le groupe historique. Onze membres au maximum, bareme positionnel,
         //          medailles et coupes.
         // "kop"  : le kop de supporters. Aucun plafond de membres, aucun point,
         //          aucune medaille. On s'y situe au coefficient expert, rien de plus.
@@ -178,6 +181,18 @@ namespace dotnet.core.thegoldenfan.Services
             public string Type { get; set; } = TypeAmis;
         }
 
+        // La place d'un membre sur un match du cycle, avec le nombre de joueurs
+        // presents ce soir-la : le site ecrit « 2/7 », qui se lit « deuxieme des
+        // sept presents ». Position va de 1 a 5 et suit l'ordre chronologique des
+        // matchs du cycle. Un match que le membre n'a pas joue, ou qui n'est pas
+        // encore dispute, n'a simplement pas d'entree.
+        public class GroupMatchPlaceResult
+        {
+            public int Position { get; set; }
+            public int Place { get; set; }
+            public int Presents { get; set; }
+        }
+
         public class GroupMemberRankingResult
         {
             public Guid UserId { get; set; }
@@ -189,6 +204,10 @@ namespace dotnet.core.thegoldenfan.Services
 
             // Le rang avant le dernier match joué. 0 = pas de mouvement à montrer.
             public int RankBefore { get; set; }
+
+            // Les places match par match du cycle en cours, dans l'ordre
+            // chronologique. Vide pour un membre qui n'a encore rien joué.
+            public List<GroupMatchPlaceResult> MatchPlaces { get; set; } = new();
         }
 
         public class LeaveGroupResult
@@ -450,7 +469,7 @@ namespace dotnet.core.thegoldenfan.Services
         // est « en sommeil ». Pour un membre arrivé récemment, seuls comptent les
         // matchs clos depuis son arrivée : il faut qu'il en ait déjà manqué trois.
         // Il se réveille dès qu'il enregistre un prono pour un match à venir.
-        //   - un dormeur ne compte plus dans les dix places d'un groupe d'amis ;
+        //   - un dormeur ne compte plus dans les onze places d'un groupe d'amis ;
         //   - il disparaît du classement affiché (ses anciens points restent dans
         //     le calcul des autres, rien ne bouge pour eux) ;
         //   - rien n'est écrit en base : le statut se déduit à chaque lecture.
@@ -585,7 +604,7 @@ namespace dotnet.core.thegoldenfan.Services
             if (group.Members.Any(m => m.UserId.Equals(userId)))
             { throw BaseException.AlreadyInDb(-3, src); }
 
-            // Le plafond des dix ne concerne que les groupes d'amis. Un kop n'en a pas,
+            // Le plafond des onze ne concerne que les groupes d'amis. Un kop n'en a pas,
             // mais on n'y entre que si l'on n'appartient a aucun autre kop.
             if (IsKop(group.Type))
             {
@@ -793,6 +812,41 @@ namespace dotnet.core.thegoldenfan.Services
                 }
             }
 
+            // --- Les places match par match (17 septembre 2026) ---
+            // Exactement le classement qui distribue les points ci-dessus, retenu
+            // cette fois place par place plutot qu'en points. On parcourt les matchs
+            // du cycle dans l'ordre pour que M1 soit bien le premier des cinq, et
+            // non le premier joue. Les ex aequo partagent la meme place, comme ils
+            // partagent les memes points.
+            var placesParMembre = new Dictionary<Guid, List<GroupMatchPlaceResult>>();
+            for (int iCycle = 0; iCycle < cycleMatches.Count; iCycle++)
+            {
+                var mCycle = cycleMatches[iCycle];
+                if (!IsPlayed(mCycle.Status)) { continue; }
+
+                var notesDuSoir = predictions
+                    .Where(w => w.MatchId.Equals(mCycle.Id) && w.ResultTotal.HasValue)
+                    .OrderByDescending(o => o.ResultTotal.Value)
+                    .ToList();
+
+                int rangDuSoir = 0;
+                for (int i = 0; i < notesDuSoir.Count; i++)
+                {
+                    if (i > 0 && notesDuSoir[i].ResultTotal.Value != notesDuSoir[i - 1].ResultTotal.Value)
+                    { rangDuSoir = i; }
+
+                    if (!placesParMembre.ContainsKey(notesDuSoir[i].UserId))
+                    { placesParMembre[notesDuSoir[i].UserId] = new List<GroupMatchPlaceResult>(); }
+
+                    placesParMembre[notesDuSoir[i].UserId].Add(new GroupMatchPlaceResult
+                    {
+                        Position = iCycle + 1,
+                        Place = rangDuSoir + 1,
+                        Presents = notesDuSoir.Count
+                    });
+                }
+            }
+
             var idsJoues = playedMatches.Select(s => s.Id).ToList();
             var ranking = Construire(idsJoues);
             for (int i = 0; i < ranking.Count; i++) { ranking[i].Rank = i + 1; }
@@ -836,6 +890,15 @@ namespace dotnet.core.thegoldenfan.Services
                     ExpertCoef = 0,
                     Rank = 0
                 }));
+
+            // Les places sont posees en dernier, une fois les arrivants ajoutes :
+            // ainsi personne n'est oublie, et un membre sans aucun match garde sa
+            // liste vide.
+            foreach (var r in ranking)
+            {
+                if (placesParMembre.ContainsKey(r.UserId))
+                { r.MatchPlaces = placesParMembre[r.UserId]; }
+            }
 
             return new GroupDetailsResult
             {
