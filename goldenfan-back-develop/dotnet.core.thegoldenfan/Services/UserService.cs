@@ -326,7 +326,7 @@ namespace dotnet.core.thegoldenfan.Services
               + "par des supporters du PSG depuis de longues ann&eacute;es.</p>"
 
               + "<p style=\"font-family:" + POLICE + ";font-size:16px;line-height:1.7;"
-              + "color:" + C_OR + ";margin:22px 0 0;font-weight:bold;\">Bons pronos et allez Paris</p>";
+              + "color:" + C_OR + ";margin:22px 0 0;font-weight:bold;\">Bons pronos et Allez Paris</p>";
 
             string corps = CadreHtml("Bienvenue", contenu, lienStop);
 
@@ -343,7 +343,7 @@ namespace dotnet.core.thegoldenfan.Services
               + "donner une note.\n\n"
               + "YouProno est un jeu gratuit et sans publicite cree par des supporters du PSG "
               + "depuis de longues annees.\n\n"
-              + "Bons pronos et allez Paris\n\n"
+              + "Bons pronos et Allez Paris\n\n"
               + "@lepsgdantoine\n\n"
               + "---\n"
               + "Ne plus recevoir de rappel avant match : " + lienStop;
@@ -805,7 +805,7 @@ namespace dotnet.core.thegoldenfan.Services
             string phrase = aDejaJoue
                 ? "Ce matin, tu vas conna&icirc;tre le groupe de joueurs retenus pour "
                   + System.Net.WebUtility.HtmlEncode(affiche) + " et les compos probables de la "
-                  + "presse. C'est peut-&ecirc;tre le moment d'optimiser tes pronos."
+                  + "presse. C'est peut-&ecirc;tre le moment de v&eacute;rifier si tu as choisi la bonne compo."
                 : "Aujourd'hui, le PSG affronte " + System.Net.WebUtility.HtmlEncode(adversaire)
                   + " &agrave; " + heureMatch + ".<br>Tu peux faire tes pronos jusqu'&agrave; "
                   + heureCloture + ".";
@@ -834,8 +834,7 @@ namespace dotnet.core.thegoldenfan.Services
 
               + "<p style=\"font-family:" + POLICE + ";font-size:16px;line-height:1.7;"
               + "color:" + C_OR + ";margin:22px 0 0;font-weight:bold;\">"
-              + (aDejaJoue ? "Bon match et allez Paris"
-                           : "Bon match, bons pronos et surtout allez Paris") + "</p>";
+              + "Bons pronos, bon match et surtout Allez Paris</p>";
 
             string corps = CadreHtml("Jour de match", contenu, lienStop);
 
@@ -844,7 +843,8 @@ namespace dotnet.core.thegoldenfan.Services
               + (aDejaJoue
                   ? "Ce matin, tu vas connaitre le groupe de joueurs retenus pour " + affiche
                     + " et les compos probables de la presse. C'est peut-etre le moment "
-                    + "d'optimiser tes pronos. Tu peux les modifier jusqu'a " + heureCloture + "."
+                    + "de verifier si tu as choisi la bonne compo. Tu peux les modifier jusqu'a "
+                    + heureCloture + "."
                   : "Aujourd'hui, le PSG affronte " + adversaire + " a " + heureMatch
                     + ". Tu peux faire tes pronos jusqu'a " + heureCloture + ".\n\n"
                     + "Certains prennent leur temps pour bien reflechir, d'autres la jouent a "
@@ -852,8 +852,7 @@ namespace dotnet.core.thegoldenfan.Services
                     + "avant de faire leur compo. A toi de la jouer comme tu veux.")
               + "\n\n"
               + "https://youprono.fr\n\n"
-              + (aDejaJoue ? "Bon match et allez Paris"
-                           : "Bon match, bons pronos et surtout allez Paris") + "\n\n"
+              + "Bons pronos, bon match et surtout Allez Paris\n\n"
               + "@lepsgdantoine\n\n"
               + "---\n"
               + "Ne plus recevoir de rappel avant match : " + lienStop;
