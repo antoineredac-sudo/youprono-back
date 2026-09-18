@@ -397,6 +397,112 @@ namespace dotnet.core.thegoldenfan.Services
         // annoncait « le coup d'envoi face a » suivi de rien, et le courriel de
         // resultat affichait « PSG - ». On essaie les trois champs connus, comme
         // le site et le record du groupe.
+        // ===== LES NOMS COURTS DES CLUBS (18 septembre 2026) =====
+        // La regle, validee par Antoine : le nom court, c'est ce qu'un supporter
+        // dit a voix haute. Sigle quand il est d'usage (OM, OL, PSG), ville seule
+        // sinon (Brest, Monaco, Le Havre). Douze caracteres au maximum, aucune
+        // mention juridique.
+        //
+        // Ils servent partout ou la place manque, a commencer par l'objet du
+        // courriel de rappel : « Olympique de Marseille - PSG : a toi de jouer »
+        // fait quarante-cinq caracteres et se fait couper sur un telephone,
+        // « OM - PSG : a toi de jouer » en fait vingt-cinq.
+        private static readonly Dictionary<string, string> NomsCourts =
+            new(StringComparer.OrdinalIgnoreCase)
+        {
+            // Ceux que le calendrier connait deja
+            { "Paris Saint-Germain", "PSG" },
+            { "Olympique de Marseille", "OM" },
+            { "Olympique Lyonnais", "OL" },
+            { "AS Monaco", "Monaco" },
+            { "Stade Brestois 29", "Brest" },
+            { "RC Strasbourg", "Strasbourg" },
+            { "Le Havre AC", "Le Havre" },
+            { "Le Mans FC", "Le Mans" },
+            { "ESTAC Troyes", "Troyes" },
+            { "FC Barcelone", "Barcelone" },
+            { "Manchester City", "Man City" },
+            { "Villarreal CF", "Villarreal" },
+            { "Slovan Bratislava", "Bratislava" },
+
+            // Les autres clubs francais
+            { "LOSC Lille", "Lille" },
+            { "Lille OSC", "Lille" },
+            { "RC Lens", "Lens" },
+            { "Stade Rennais", "Rennes" },
+            { "Stade Rennais FC", "Rennes" },
+            { "FC Nantes", "Nantes" },
+            { "OGC Nice", "Nice" },
+            { "Toulouse FC", "Toulouse" },
+            { "AJ Auxerre", "Auxerre" },
+            { "Angers SCO", "Angers" },
+            { "FC Metz", "Metz" },
+            { "FC Lorient", "Lorient" },
+            { "AS Saint-Etienne", "ASSE" },
+            { "AS Saint-Étienne", "ASSE" },
+            { "Montpellier HSC", "Montpellier" },
+            { "Stade de Reims", "Reims" },
+            { "Paris FC", "Paris FC" },
+
+            // Les europeens les plus probables
+            { "Real Madrid", "Real" },
+            { "Bayern Munich", "Bayern" },
+            { "FC Bayern Munich", "Bayern" },
+            { "Liverpool FC", "Liverpool" },
+            { "Arsenal FC", "Arsenal" },
+            { "Inter Milan", "Inter" },
+            { "AC Milan", "Milan" },
+            { "Atletico Madrid", "Atlético" },
+            { "Atlético Madrid", "Atlético" },
+            { "Borussia Dortmund", "Dortmund" },
+            { "Juventus Turin", "Juve" },
+            { "Juventus", "Juve" },
+            { "Manchester United", "Man United" },
+            { "Chelsea FC", "Chelsea" },
+            { "Tottenham Hotspur", "Tottenham" },
+            { "SL Benfica", "Benfica" },
+            { "FC Porto", "Porto" },
+            { "Ajax Amsterdam", "Ajax" },
+            { "AFC Ajax", "Ajax" }
+        };
+
+        // Les mentions juridiques que le repli efface quand un club n'est pas
+        // dans la table. Le point sur le « 29 » de Brest ou le « 04 » de
+        // Leverkusen : un nombre seul en fin de nom ne dit rien au supporter.
+        private static readonly string[] MentionsJuridiques =
+            { "FC", "AC", "RC", "AS", "SC", "SCO", "CF", "CD", "AJ", "OGC", "LOSC",
+              "ESTAC", "RCS", "US", "SM", "EA", "SL", "AFC", "HSC", "SS", "SSC" };
+
+        // Le nom court d'un club. A defaut de le connaitre, on retire les
+        // mentions juridiques et les nombres plutot que de rendre le nom entier :
+        // « Stade Brestois 29 » devient « Stade Brestois », ce qui vaut mieux que
+        // rien le jour ou un club de district sort du chapeau de la Coupe.
+        public static string NomCourt(string? nom)
+        {
+            string n = (nom ?? "").Trim();
+            if (n.Length == 0) { return ""; }
+            if (NomsCourts.TryGetValue(n, out var court)) { return court; }
+
+            var mots = n.Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                        .Where(m => !MentionsJuridiques.Contains(m, StringComparer.OrdinalIgnoreCase)
+                                 && !m.All(char.IsDigit))
+                        .ToArray();
+            string reste = string.Join(' ', mots).Trim();
+            return reste.Length > 0 ? reste : n;
+        }
+
+        // L'affiche en version courte : « Olympique de Marseille - PSG » devient
+        // « OM - PSG ». On ne touche pas a l'affiche d'origine, qui reste celle
+        // du corps du message et de l'encadre dore.
+        public static string AfficheCourte(string? affiche)
+        {
+            string a = (affiche ?? "").Trim();
+            if (a.Length == 0) { return ""; }
+            int coupe = a.IndexOf(" - ", StringComparison.Ordinal);
+            if (coupe < 0) { return NomCourt(a); }
+            return NomCourt(a.Substring(0, coupe)) + " - " + NomCourt(a.Substring(coupe + 3));
+        }
+
         private static string NomEquipe(TeamMatch? cote)
         {
             var t = cote?.Team;
@@ -700,7 +806,9 @@ namespace dotnet.core.thegoldenfan.Services
                 ? "Ce matin, tu vas conna&icirc;tre le groupe de joueurs retenus pour "
                   + System.Net.WebUtility.HtmlEncode(affiche) + " et les compos probables de la "
                   + "presse. C'est peut-&ecirc;tre le moment d'optimiser tes pronos."
-                : "Aujourd'hui c'est jour de match pour les supporters du PSG.";
+                : "Aujourd'hui, le PSG affronte " + System.Net.WebUtility.HtmlEncode(adversaire)
+                  + " &agrave; " + heureMatch + ".<br>Tu peux faire tes pronos jusqu'&agrave; "
+                  + heureCloture + ".";
 
             string contenu =
                 PARA + "Salut " + nom + ",</p>"
@@ -711,13 +819,23 @@ namespace dotnet.core.thegoldenfan.Services
                     "Coup d'envoi &agrave; " + heureMatch + " &middot; pronos ferm&eacute;s &agrave; "
                   + heureCloture)
 
-              + PARA + "Tu peux faire et modifier tes pr&eacute;dictions jusqu'&agrave; "
-              + heureCloture + ".</p>"
+              // Deux facons de jouer plutot qu'une consigne : chacun se reconnait
+              // dans l'une des deux, et les deux menent au bouton. Celui qui a
+              // deja joue n'a pas besoin de ce paragraphe, on lui rappelle
+              // seulement jusqu'a quand il peut se raviser (18 septembre 2026).
+              + (aDejaJoue
+                 ? PARA + "Tu peux modifier tes pronos jusqu'&agrave; " + heureCloture + ".</p>"
+                 : PARA + "Certains prennent leur temps pour bien r&eacute;fl&eacute;chir, "
+                   + "d'autres la jouent &agrave; l'instinct et attendent le dernier moment "
+                   + "pour avoir les derni&egrave;res infos avant de faire leur compo. "
+                   + "&Agrave; toi de la jouer comme tu veux.</p>")
 
               + BoutonHtml("https://youprono.fr", libelleBouton, false, false)
 
               + "<p style=\"font-family:" + POLICE + ";font-size:16px;line-height:1.7;"
-              + "color:" + C_OR + ";margin:22px 0 0;font-weight:bold;\">Bon match et allez Paris</p>";
+              + "color:" + C_OR + ";margin:22px 0 0;font-weight:bold;\">"
+              + (aDejaJoue ? "Bon match et allez Paris"
+                           : "Bon match, bons pronos et surtout allez Paris") + "</p>";
 
             string corps = CadreHtml("Jour de match", contenu, lienStop);
 
@@ -726,12 +844,16 @@ namespace dotnet.core.thegoldenfan.Services
               + (aDejaJoue
                   ? "Ce matin, tu vas connaitre le groupe de joueurs retenus pour " + affiche
                     + " et les compos probables de la presse. C'est peut-etre le moment "
-                    + "d'optimiser tes pronos."
-                  : "Aujourd'hui c'est jour de match pour les supporters du PSG. Le coup d'envoi "
-                    + "face a " + adversaire + " aura lieu a " + heureMatch + ".")
-              + " Tu peux faire et modifier tes predictions jusqu'a " + heureCloture + ".\n\n"
+                    + "d'optimiser tes pronos. Tu peux les modifier jusqu'a " + heureCloture + "."
+                  : "Aujourd'hui, le PSG affronte " + adversaire + " a " + heureMatch
+                    + ". Tu peux faire tes pronos jusqu'a " + heureCloture + ".\n\n"
+                    + "Certains prennent leur temps pour bien reflechir, d'autres la jouent a "
+                    + "l'instinct et attendent le dernier moment pour avoir les dernieres infos "
+                    + "avant de faire leur compo. A toi de la jouer comme tu veux.")
+              + "\n\n"
               + "https://youprono.fr\n\n"
-              + "Bon match et allez Paris\n\n"
+              + (aDejaJoue ? "Bon match et allez Paris"
+                           : "Bon match, bons pronos et surtout allez Paris") + "\n\n"
               + "@lepsgdantoine\n\n"
               + "---\n"
               + "Ne plus recevoir de rappel avant match : " + lienStop;
@@ -741,9 +863,11 @@ namespace dotnet.core.thegoldenfan.Services
                 sender = new { name = "YouProno", email = expediteur },
                 to = new[] { new { email = adresse } },
                 replyTo = new { email = expediteur, name = "YouProno" },
+                // L'affiche d'abord, l'appel ensuite : c'est le nom du match qui
+                // accroche un supporter dans une liste de messages.
                 subject = aDejaJoue
                     ? "Optimise tes pronos avant la clôture"
-                    : "C'est jour de prono",
+                    : AfficheCourte(affiche) + " : à toi de jouer",
                 htmlContent = corps,
                 textContent = texteBrut,
                 headers = new Dictionary<string, string>
