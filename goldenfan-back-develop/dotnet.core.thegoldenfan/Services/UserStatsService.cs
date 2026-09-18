@@ -1159,6 +1159,20 @@ namespace dotnet.core.thegoldenfan.Services
             public double Score { get; set; }
         }
 
+        // Le meilleur d'une categorie sur un match. A egalite de note de
+        // categorie, le titre revient a celui qui a la meilleure note globale
+        // du match : le plus complet l'emporte (18 septembre 2026).
+        public sealed class MatchBestRow
+        {
+            // composition, score, possession, shots, fouls, crosses
+            public string? Category { get; set; }
+            public Guid Id { get; set; }
+            public string? UserName { get; set; }
+
+            // La note de la categorie, sur cent.
+            public double Note { get; set; }
+        }
+
         public sealed class MatchRankingResult
         {
             public string? MatchId { get; set; }
@@ -1172,6 +1186,11 @@ namespace dotnet.core.thegoldenfan.Services
 
             public double Median { get; set; }
             public List<MatchRankingRow> Rows { get; set; } = new();
+
+            // Les six rois du soir, un par categorie de pronostic. La note
+            // record n'y figure pas : elle mesure un joueur contre lui-meme,
+            // pas contre les autres.
+            public List<MatchBestRow> Bests { get; set; } = new();
         }
 
         // matchId facultatif : sans lui, on prend le dernier match note.
@@ -1191,7 +1210,18 @@ namespace dotnet.core.thegoldenfan.Services
             var lignes = await dbContext.UserMatches
                 .Where(w => w.TeamId.Equals(teamId) && w.MatchId.Equals(cible) && w.ResultTotal.HasValue)
                 .Include(i => i.User)
-                .Select(s => new { s.UserId, Pseudo = s.User.DisplayName, Note = s.ResultTotal!.Value })
+                .Select(s => new
+                {
+                    s.UserId,
+                    Pseudo = s.User.DisplayName,
+                    Note = s.ResultTotal!.Value,
+                    Composition = s.ResultTeamCompositionFormula,
+                    Score = s.ResultTeamScoreFormula,
+                    Possession = s.ResultTeamPossessionFormula,
+                    Shots = s.ResultTeamShotsFormula,
+                    Fouls = s.ResultTeamFoulsFormula,
+                    Crosses = s.ResultTeamCrossesFormula
+                })
                 .ToListAsync();
 
             var triees = lignes.OrderByDescending(o => o.Note).ToList();
@@ -1207,6 +1237,46 @@ namespace dotnet.core.thegoldenfan.Services
             }
 
             res.Median = Math.Round(GroupService.Mediane(lignes.Select(s => s.Note).ToList()), 3);
+
+            // Les six rois du soir. Un titre ne veut rien dire en dessous de
+            // deux joueurs notes, et une note absente ou nulle ne couronne
+            // personne.
+            if (triees.Count >= 2)
+            {
+                var candidats = new List<(string Cat, Guid Id, string? Pseudo, double Globale, double Valeur)>();
+                foreach (var l in lignes)
+                {
+                    void Retenir(string cat, double? v)
+                    {
+                        if (v.HasValue && v.Value > 0)
+                        { candidats.Add((cat, l.UserId, l.Pseudo, l.Note, v.Value)); }
+                    }
+                    Retenir("composition", l.Composition);
+                    Retenir("score", l.Score);
+                    Retenir("possession", l.Possession);
+                    Retenir("shots", l.Shots);
+                    Retenir("fouls", l.Fouls);
+                    Retenir("crosses", l.Crosses);
+                }
+
+                // L'ordre des six titres est celui du tunnel de pronostic.
+                foreach (var cat in new[] { "composition", "score", "possession", "shots", "fouls", "crosses" })
+                {
+                    var roi = candidats
+                        .Where(c => c.Cat == cat)
+                        .OrderByDescending(c => c.Valeur)
+                        .ThenByDescending(c => c.Globale)
+                        .FirstOrDefault();
+                    if (roi.Id == Guid.Empty) { continue; }
+                    res.Bests.Add(new MatchBestRow
+                    {
+                        Category = cat,
+                        Id = roi.Id,
+                        UserName = roi.Pseudo,
+                        Note = Math.Round(roi.Valeur, 3)
+                    });
+                }
+            }
 
             // L'affiche et le score officiel du match.
             var match = await dbContext.Matches
