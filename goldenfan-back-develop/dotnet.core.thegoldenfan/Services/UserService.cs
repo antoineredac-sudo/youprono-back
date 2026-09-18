@@ -500,7 +500,7 @@ namespace dotnet.core.thegoldenfan.Services
             if (a.Length == 0) { return ""; }
             int coupe = a.IndexOf(" - ", StringComparison.Ordinal);
             if (coupe < 0) { return NomCourt(a); }
-            return NomCourt(a.Substring(0, coupe)) + " - " + NomCourt(a.Substring(coupe + 3));
+            return NomCourt(a.Substring(0, coupe)) + "-" + NomCourt(a.Substring(coupe + 3));
         }
 
         private static string NomEquipe(TeamMatch? cote)
@@ -865,7 +865,7 @@ namespace dotnet.core.thegoldenfan.Services
                 // L'affiche d'abord, l'appel ensuite : c'est le nom du match qui
                 // accroche un supporter dans une liste de messages.
                 subject = aDejaJoue
-                    ? "Optimise tes pronos avant la clôture"
+                    ? AfficheCourte(affiche) + ", tu peux changer tes pronos avant " + heureCloture
                     : AfficheCourte(affiche) + " : à toi de jouer",
                 htmlContent = corps,
                 textContent = texteBrut,
