@@ -796,7 +796,7 @@ namespace dotnet.core.thegoldenfan.Services
             // seulement pour celui qui a deja pronostique.
             // Une seule version desormais : ce message ne part qu'a ceux qui n'ont
             // pas encore pronostique.
-            string libelleBouton = aDejaJoue ? "Modifier mes pronos" : "Je fais mes pronos";
+            string libelleBouton = aDejaJoue ? "Modifier mes pronos" : "JOUER";
 
             // Celui qui a deja joue : on ne lui redemande pas de jouer, on lui donne
             // une raison de revenir. Le groupe et les compos probables sortent le
@@ -806,31 +806,30 @@ namespace dotnet.core.thegoldenfan.Services
                 ? "Ce matin, tu vas conna&icirc;tre le groupe de joueurs retenus pour "
                   + System.Net.WebUtility.HtmlEncode(affiche) + " et les compos probables de la "
                   + "presse. C'est peut-&ecirc;tre le moment de v&eacute;rifier si tu as choisi la bonne compo."
-                : "Aujourd'hui, le PSG affronte " + System.Net.WebUtility.HtmlEncode(adversaire)
-                  + " &agrave; " + heureMatch + ".<br>Tu peux faire tes pronos jusqu'&agrave; "
-                  + heureCloture + ".";
+                // Texte d'Antoine du 19 septembre 2026 : le matin du match, celui qui
+                // n'a pas joue n'est pas en retard, il a attendu les infos.
+                : "Tu as bien fait d'attendre le dernier jour avant de faire tes pronos, "
+                  + "d&eacute;sormais tu connais les joueurs bless&eacute;s et les compositions "
+                  + "probables selon la presse. C'est le bon moment pour faire tes pronos.";
 
             string contenu =
                 PARA + "Salut " + nom + ",</p>"
 
               + PARA + phrase + "</p>"
 
-              + BlocMatchHtml(System.Net.WebUtility.HtmlEncode(affiche),
-                    "Coup d'envoi &agrave; " + heureMatch + " &middot; pronos ferm&eacute;s &agrave; "
-                  + heureCloture)
-
-              // Deux facons de jouer plutot qu'une consigne : chacun se reconnait
-              // dans l'une des deux, et les deux menent au bouton. Celui qui a
-              // deja joue n'a pas besoin de ce paragraphe, on lui rappelle
-              // seulement jusqu'a quand il peut se raviser (18 septembre 2026).
+              // Celui qui a deja joue : l'affiche, jusqu'a quand il peut se
+              // raviser, puis le bouton. Celui qui n'a pas joue : le bouton tout
+              // de suite sous le texte, l'affiche ensuite (19 septembre 2026).
               + (aDejaJoue
-                 ? PARA + "Tu peux modifier tes pronos jusqu'&agrave; " + heureCloture + ".</p>"
-                 : PARA + "Certains prennent leur temps pour bien r&eacute;fl&eacute;chir, "
-                   + "d'autres la jouent &agrave; l'instinct et attendent le dernier moment "
-                   + "pour avoir les derni&egrave;res infos avant de faire leur compo. "
-                   + "&Agrave; toi de la jouer comme tu veux.</p>")
-
-              + BoutonHtml("https://youprono.fr", libelleBouton, false, false)
+                 ? BlocMatchHtml(System.Net.WebUtility.HtmlEncode(affiche),
+                       "Coup d'envoi &agrave; " + heureMatch + " &middot; pronos ferm&eacute;s &agrave; "
+                     + heureCloture)
+                   + PARA + "Tu peux modifier tes pronos jusqu'&agrave; " + heureCloture + ".</p>"
+                   + BoutonHtml("https://youprono.fr", libelleBouton, false, false)
+                 : BoutonHtml("https://youprono.fr", libelleBouton, false, false)
+                   + BlocMatchHtml(System.Net.WebUtility.HtmlEncode(affiche),
+                       "Coup d'envoi &agrave; " + heureMatch + " &middot; pronos ferm&eacute;s &agrave; "
+                     + heureCloture))
 
               + "<p style=\"font-family:" + POLICE + ";font-size:16px;line-height:1.7;"
               + "color:" + C_OR + ";margin:22px 0 0;font-weight:bold;\">"
@@ -845,11 +844,11 @@ namespace dotnet.core.thegoldenfan.Services
                     + " et les compos probables de la presse. C'est peut-etre le moment "
                     + "de verifier si tu as choisi la bonne compo. Tu peux les modifier jusqu'a "
                     + heureCloture + "."
-                  : "Aujourd'hui, le PSG affronte " + adversaire + " a " + heureMatch
-                    + ". Tu peux faire tes pronos jusqu'a " + heureCloture + ".\n\n"
-                    + "Certains prennent leur temps pour bien reflechir, d'autres la jouent a "
-                    + "l'instinct et attendent le dernier moment pour avoir les dernieres infos "
-                    + "avant de faire leur compo. A toi de la jouer comme tu veux.")
+                  : "Tu as bien fait d'attendre le dernier jour avant de faire tes pronos, "
+                    + "desormais tu connais les joueurs blesses et les compositions probables "
+                    + "selon la presse. C'est le bon moment pour faire tes pronos.\n\n"
+                    + affiche + " - coup d'envoi a " + heureMatch + ", pronos fermes a "
+                    + heureCloture + ".")
               + "\n\n"
               + "https://youprono.fr\n\n"
               + "Bons pronos, bon match et surtout Allez Paris\n\n"
