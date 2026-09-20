@@ -255,6 +255,24 @@ namespace dotnet.core.thegoldenfan.controllers
             return res;
         }
 
+        // Changement de pseudo d'un compte. Usage privé du fondateur, depuis
+        // Swagger, en POST comme la suppression. L'historique du compte est gardé.
+        [HttpPost("Rename/{accessCode}/{ancienPseudo}/{nouveauPseudo}")]
+        public async Task<ResponseModel<RenameResult>> RenameAsync(string accessCode, string ancienPseudo, string nouveauPseudo)
+        {
+            ResponseModel<RenameResult> res = ResponseModel<RenameResult>.CreateDefault();
+            try
+            {
+                var obj = await service.RenameAsync(accessCode, ancienPseudo, nouveauPseudo);
+                res = new ResponseModel<RenameResult>(0, obj);
+            }
+            catch (Exception ex)
+            {
+                res = ResponseModel<RenameResult>.Exception(ex);
+            }
+            return res;
+        }
+
         [HttpGet("AttendanceBonus/{userId}/{teamId}")]
         public async Task<ResponseModel<double>> AttendanceBonusAsync(Guid userId, string teamId)
         {
