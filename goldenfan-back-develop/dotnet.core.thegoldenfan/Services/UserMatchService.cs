@@ -302,6 +302,100 @@ namespace dotnet.core.thegoldenfan.Services
         // Pour le fondateur, qui veut partager sur X la répartition des pronos :
         // combien voient Paris gagner, un nul, l'adversaire gagner, et le score
         // le plus pronostiqué. Données agrégées uniquement, aucun pseudo.
+        // ===== LA PAGE « LA COMPO OFFICIELLE EST TOMBEE » =====
+        // Le onze du coach, le onze du joueur, et pour chaque homme le nombre de
+        // participants qui l'avaient aligne. La note est celle du serveur, rarete
+        // comprise : un titulaire que peu de monde avait vu vaut davantage, et
+        // c'est pour cela qu'un meme 8/11 peut donner deux notes differentes.
+        //
+        // Rien n'est renvoye avant la cloture des pronostics : jusque-la, ces
+        // chiffres diraient aux retardataires ce que les autres ont joue.
+        public sealed class CompoSoloResult
+        {
+            public bool HasOfficialComposition { get; set; }
+            public int ParticipantCount { get; set; }
+            public int Trouves { get; set; }
+            public double Note { get; set; }
+            public List<string> Officiel { get; set; } = new();
+            public List<string> Mien { get; set; } = new();
+            public Dictionary<string, int> Choix { get; set; } = new();
+        }
+
+        public async Task<CompoSoloResult> CompoAsync(string teamId, string matchId, Guid userId)
+        {
+            string src = "UserMatchService.CompoAsync";
+            var res = new CompoSoloResult();
+
+            var match = await dbContext.Matches
+                .Include(i => i.HomeTeam).ThenInclude(t => t.PlayerForMatches)
+                .Include(i => i.AwayTeam).ThenInclude(t => t.PlayerForMatches)
+                .FirstOrDefaultAsync(w => w.Id.Equals(matchId));
+            if (match == null) { throw BaseException.NotFound(-2, src); }
+
+            DateTime clotureUtc = GroupService.ParisToUtc(
+                match.DateTime.AddHours(-GroupService.ClotureAvantHeures));
+            if (DateTime.UtcNow < clotureUtc) { throw BaseException.InvalidModel(-3, src); }
+
+            var side = (match.HomeTeam != null && match.HomeTeam.TeamId != null
+                        && match.HomeTeam.TeamId.Equals(teamId, StringComparison.OrdinalIgnoreCase))
+                     ? match.HomeTeam : match.AwayTeam;
+            if (side == null) { throw BaseException.NotFound(-4, src); }
+
+            var titulaires = side.PlayerForMatches
+                .Where(w => !(w.Position != null
+                           && w.Position.Trim().Equals("SUBSTITUTE", StringComparison.OrdinalIgnoreCase)))
+                .ToList();
+            res.HasOfficialComposition = titulaires.Count > 0;
+            res.Officiel = titulaires.Select(s => s.PersonId).ToList();
+
+            var mien = await dbContext.UserMatches
+                .Include(i => i.UserPlayerForMatches)
+                .FirstOrDefaultAsync(w => w.MatchId.Equals(matchId)
+                                       && w.TeamId.Equals(teamId)
+                                       && w.UserId.Equals(userId));
+            if (mien != null)
+            { res.Mien = mien.UserPlayerForMatches.Select(s => s.PersonId).ToList(); }
+
+            var toutes = await dbContext.UserMatches
+                .Where(w => w.MatchId.Equals(matchId) && w.TeamId.Equals(teamId))
+                .Include(i => i.UserPlayerForMatches)
+                .ToListAsync();
+            res.ParticipantCount = toutes.Count;
+
+            var decompte = new Dictionary<string, int>();
+            foreach (var prediction in toutes)
+            {
+                foreach (var pick in prediction.UserPlayerForMatches)
+                {
+                    if (pick.PersonId == null) { continue; }
+                    decompte[pick.PersonId] = decompte.TryGetValue(pick.PersonId, out var deja) ? deja + 1 : 1;
+                }
+            }
+
+            // On ne renvoie que les hommes concernes : les onze du coach et les onze
+            // du joueur. Le reste de l'effectif ne regarde pas cette page.
+            foreach (var id in res.Officiel.Concat(res.Mien).Distinct())
+            {
+                if (id == null) { continue; }
+                res.Choix[id] = decompte.TryGetValue(id, out var combien) ? combien : 0;
+            }
+
+            double somme = 0;
+            int trouves = 0;
+            foreach (var id in res.Officiel)
+            {
+                if (id == null || !res.Mien.Contains(id)) { continue; }
+                trouves++;
+                int nb = decompte.TryGetValue(id, out var c) ? c : 0;
+                somme += UserStatsService.BASE_TITULAIRE
+                       * UserStatsService.CoefRarete(nb, res.ParticipantCount);
+            }
+            res.Trouves = trouves;
+            res.Note = Math.Round(somme, 4);
+
+            return res;
+        }
+
         // Protégée par le même code que la liste des inscrits, parce que le site
         // n'affiche pas encore cette répartition : la montrer aux joueurs avant la
         // clôture reste une décision à prendre.
