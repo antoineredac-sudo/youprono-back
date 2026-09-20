@@ -1217,6 +1217,17 @@ namespace dotnet.core.thegoldenfan.Services
               + "invite-les sur WhatsApp.</p>"
               + BoutonHtml("https://youprono.fr/#creer-groupe", "Cr&eacute;er un groupe", true, true)
 
+              // Le teaser de la treve (texte d'Antoine, 20 septembre 2026). Temporaire :
+              // il disparait avec le UserService.cs du changement de nom, le 23.
+              + "<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" "
+              + "style=\"margin:22px 0 0;\"><tr>"
+              + "<td style=\"border:1px solid " + C_OR + ";border-radius:10px;padding:16px 18px;"
+              + "text-align:center;\">"
+              + "<div style=\"font-family:" + POLICE + ";font-size:16px;line-height:1.6;"
+              + "color:" + C_TEXTE + ";font-weight:bold;\">Pendant la tr&ecirc;ve, YouProno change "
+              + "de nom et va tester ta culture club. Rendez-vous jeudi pour relever ton premier d&eacute;fi.</div>"
+              + "</td></tr></table>"
+
               + "<p style=\"font-family:" + POLICE + ";font-size:16px;line-height:1.7;"
               + "color:" + C_OR + ";margin:22px 0 0;font-weight:bold;\">Allez Paris</p>";
 
@@ -1231,6 +1242,7 @@ namespace dotnet.core.thegoldenfan.Services
               + "Mon resultat : https://youprono.fr/#results\n\n"
               + "Si tu as envie de te confronter a tes amis lors du prochain match, invite-les sur WhatsApp.\n\n"
               + "Creer un groupe : https://youprono.fr/#creer-groupe\n\n"
+              + "Pendant la treve, YouProno change de nom et va tester ta culture club. Rendez-vous jeudi pour relever ton premier defi.\n\n"
               + "Allez Paris\n\n"
               + "@lepsgdantoine\n\n"
               + "---\n"
