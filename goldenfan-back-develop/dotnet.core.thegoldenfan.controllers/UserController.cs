@@ -255,6 +255,24 @@ namespace dotnet.core.thegoldenfan.controllers
             return res;
         }
 
+        // Suppression d'un compte qui a deja joue. Le mot SUPPRIMER doit figurer
+        // dans l'adresse : sans lui, rien n'est touche.
+        [HttpPost("DeleteFull/{accessCode}/{userId}/{displayName}/{confirmation}")]
+        public async Task<ResponseModel<DeleteAccountResult>> DeleteAccountForceAsync(string accessCode, Guid userId, string displayName, string confirmation)
+        {
+            ResponseModel<DeleteAccountResult> res = ResponseModel<DeleteAccountResult>.CreateDefault();
+            try
+            {
+                var obj = await service.DeleteAccountForceAsync(accessCode, userId, displayName, confirmation);
+                res = new ResponseModel<DeleteAccountResult>(0, obj);
+            }
+            catch (Exception ex)
+            {
+                res = ResponseModel<DeleteAccountResult>.Exception(ex);
+            }
+            return res;
+        }
+
         // Changement de pseudo d'un compte. Usage privé du fondateur, depuis
         // Swagger, en POST comme la suppression. L'historique du compte est gardé.
         [HttpPost("Rename/{accessCode}/{ancienPseudo}/{nouveauPseudo}")]
