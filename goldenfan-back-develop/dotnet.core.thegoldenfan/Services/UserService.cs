@@ -1109,12 +1109,28 @@ namespace dotnet.core.thegoldenfan.Services
 
               + PARA + "Comme tu as &eacute;t&eacute; forfait sur le dernier match, tu obtiens "
               + "une note en dessous de la note moyenne obtenue par l'ensemble des participants. "
-              + "Elle entre dans ton Coef Expert comme une vraie note.</p>"
+              + "Elle entre dans ton Coef Expert comme une vraie note. "
+              // Phrase d'Antoine (20 septembre 2026). Vraie par construction : la
+              // note de forfait est la meilleure du tiers le plus faible.
+              + "Ce n'est pas une note &eacute;liminatoire : pr&egrave;s d'un joueur sur trois "
+              + "a fait moins bien en ayant jou&eacute;.</p>"
 
               + PARA + "Les pronos pour le prochain match sont ouverts, tu vas pouvoir prendre "
               + "ta revanche.</p>"
 
               + BoutonHtml("https://youprono.fr", "Je fais mes pronos", false, false)
+
+              // Le teaser de la treve, le meme que dans le courriel de resultat
+              // (20 septembre 2026). Temporaire : il disparait avec le UserService.cs
+              // du changement de nom, le 23.
+              + "<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" "
+              + "style=\"margin:22px 0 0;\"><tr>"
+              + "<td style=\"border:1px solid " + C_OR + ";border-radius:10px;padding:16px 18px;"
+              + "text-align:center;\">"
+              + "<div style=\"font-family:" + POLICE + ";font-size:16px;line-height:1.6;"
+              + "color:" + C_TEXTE + ";font-weight:bold;\">Pendant la tr&ecirc;ve, YouProno change "
+              + "de nom et va tester ta culture club. Rendez-vous jeudi pour relever ton premier d&eacute;fi.</div>"
+              + "</td></tr></table>"
 
               + "<p style=\"font-family:" + POLICE + ";font-size:16px;line-height:1.7;"
               + "color:" + C_OR + ";margin:22px 0 0;font-weight:bold;\">Allez Paris</p>";
@@ -1125,10 +1141,12 @@ namespace dotnet.core.thegoldenfan.Services
                 "Salut " + pseudo + ",\n\n"
               + "Comme tu as ete forfait sur le dernier match (" + affiche + "), tu obtiens une "
               + "note en dessous de la note moyenne obtenue par l'ensemble des participants : " + noteTexte
-              + ". Elle entre dans ton Coef Expert comme une vraie note.\n\n"
+              + ". Elle entre dans ton Coef Expert comme une vraie note. Ce n'est pas une note "
+              + "eliminatoire : pres d'un joueur sur trois a fait moins bien en ayant joue.\n\n"
               + "Les pronos pour le prochain match sont ouverts, tu vas pouvoir prendre ta "
               + "revanche.\n\n"
               + "https://youprono.fr\n\n"
+              + "Pendant la treve, YouProno change de nom et va tester ta culture club. Rendez-vous jeudi pour relever ton premier defi.\n\n"
               + "Allez Paris\n\n"
               + "@lepsgdantoine\n\n"
               + "---\n"
