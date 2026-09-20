@@ -29,6 +29,24 @@ namespace dotnet.core.thegoldenfan.controllers
             this.service = service;
         }
 
+        // La page « La compo officielle est tombee » : le onze du coach, celui du
+        // joueur, le decompte des choix et la note de composition, rarete comprise.
+        [HttpGet("Compo/{teamId}/{matchId}/{userId}")]
+        public async Task<ResponseModel<UserMatchService.CompoSoloResult>> CompoAsync(string teamId, string matchId, Guid userId)
+        {
+            ResponseModel<UserMatchService.CompoSoloResult> res = ResponseModel<UserMatchService.CompoSoloResult>.CreateDefault();
+            try
+            {
+                var obj = await service.CompoAsync(teamId, matchId, userId);
+                res = new ResponseModel<UserMatchService.CompoSoloResult>(0, obj);
+            }
+            catch (Exception ex)
+            {
+                res = ResponseModel<UserMatchService.CompoSoloResult>.Exception(ex);
+            }
+            return res;
+        }
+
         [HttpGet("ByUserMatchTeam/{userId}/{matchId}/{teamId}")]
         public async Task<ResponseModel<UserPredictionResult>> GetByUserMatchTeamAsync(Guid userId, string matchId, string teamId)
         {
