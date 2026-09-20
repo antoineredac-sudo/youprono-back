@@ -1205,10 +1205,17 @@ namespace dotnet.core.thegoldenfan.Services
                    + System.Net.WebUtility.HtmlEncode(verdict) + "</div>"
                    + "</td></tr></table>")
 
-              + PARA + "D&eacute;couvre ta nouvelle position au classement et le compte &agrave; "
-              + "rebours des pronos pour le prochain match.</p>"
+              + PARA + "D&eacute;couvre tous tes r&eacute;sultats en d&eacute;tail, les badges que tu as "
+              + "peut-&ecirc;tre d&eacute;bloqu&eacute;s et ton nouveau classement.</p>"
 
-              + BoutonHtml("https://youprono.fr/#ranking", "Mon classement", false, false)
+              + BoutonHtml("https://youprono.fr/#results", "Mon r&eacute;sultat", false, false)
+
+              // L'invitation a creer un groupe, sous le classement (texte d'Antoine,
+              // 20 septembre 2026). Le bouton ouvre directement l'ecran ou l'on
+              // nomme son groupe ; WhatsApp s'ouvre ensuite avec l'invitation.
+              + PARA + "Si tu as envie de te confronter &agrave; tes amis lors du prochain match, "
+              + "invite-les sur WhatsApp.</p>"
+              + BoutonHtml("https://youprono.fr/#creer-groupe", "Cr&eacute;er un groupe", true, true)
 
               + "<p style=\"font-family:" + POLICE + ";font-size:16px;line-height:1.7;"
               + "color:" + C_OR + ";margin:22px 0 0;font-weight:bold;\">Allez Paris</p>";
@@ -1219,9 +1226,11 @@ namespace dotnet.core.thegoldenfan.Services
                 "Salut " + pseudo + ",\n\n"
               + ouverture + " la note de " + noteTexte + " sur le match " + affiche + ".\n\n"
               + (string.IsNullOrEmpty(verdict) ? "" : verdict + "\n\n")
-              + "Decouvre ta nouvelle position au classement et le compte a rebours des pronos "
-              + "pour le prochain match.\n\n"
-              + "https://youprono.fr/#ranking\n\n"
+              + "Decouvre tous tes resultats en detail, les badges que tu as peut-etre debloques "
+              + "et ton nouveau classement.\n\n"
+              + "Mon resultat : https://youprono.fr/#results\n\n"
+              + "Si tu as envie de te confronter a tes amis lors du prochain match, invite-les sur WhatsApp.\n\n"
+              + "Creer un groupe : https://youprono.fr/#creer-groupe\n\n"
               + "Allez Paris\n\n"
               + "@lepsgdantoine\n\n"
               + "---\n"
