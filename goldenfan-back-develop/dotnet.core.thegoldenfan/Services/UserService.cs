@@ -1580,6 +1580,7 @@ namespace dotnet.core.thegoldenfan.Services
             public Guid Id { get; set; }
             public string? DisplayName { get; set; }
             public bool Supprime { get; set; }
+            public int PronosSupprimes { get; set; }
             public List<string> GroupesQuittes { get; set; } = new();
             public List<string> GroupesSupprimes { get; set; } = new();
             public int AmisRetires { get; set; }
@@ -1891,6 +1892,134 @@ namespace dotnet.core.thegoldenfan.Services
             { throw BaseException.NotFound(-2, src); }
 
             return TokenHelper.GenerateToken(user.Id.ToString(), user.DisplayName ?? string.Empty, GetRole(normalized));
+        }
+
+        // Suppression d'un compte QUI A DÉJÀ JOUÉ. Usage privé du fondateur, pour
+        // ses propres comptes de secours : la route ordinaire refuse tout compte
+        // ayant pronostiqué, et c'est une bonne règle. Celle-ci passe outre, mais
+        // seulement si le mot SUPPRIMER est écrit en toutes lettres dans l'adresse,
+        // en plus du code d'accès, de l'identifiant et du pseudo. Les pronostics
+        // du compte et le détail de ses compositions partent avec lui : ils ne
+        // comptent plus dans les classements ni dans les médianes des matchs passés.
+        public async Task<DeleteAccountResult> DeleteAccountForceAsync(string accessCode, Guid userId, string displayName, string confirmation)
+        {
+            string src = "UserService.DeleteAccountForceAsync";
+            if (StringHelper.IsNull(accessCode) ||
+                !accessCode.Trim().Equals(AllUsersAccessCode, StringComparison.OrdinalIgnoreCase))
+            { throw BaseException.InvalidModel(-1, src); }
+
+            if (StringHelper.IsNull(confirmation) ||
+                !confirmation.Trim().Equals("SUPPRIMER", StringComparison.OrdinalIgnoreCase))
+            {
+                throw new BaseException(-6, src,
+                    "Confirmation manquante : écrire SUPPRIMER dans le dernier champ. Rien n'a été supprimé.");
+            }
+
+            var user = await dbContext.Users.FirstOrDefaultAsync(w => w.Id.Equals(userId));
+            if (user == null)
+            { throw new BaseException(-2, src, "Aucun compte ne porte cet identifiant."); }
+
+            string pseudoSaisi = (displayName ?? "").Trim().TrimStart('@');
+            if (!string.Equals((user.DisplayName ?? "").Trim(), pseudoSaisi, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new BaseException(-3, src,
+                    "Le pseudo ne correspond pas à cet identifiant : ce compte s'appelle « "
+                    + user.DisplayName + " ». Rien n'a été supprimé.");
+            }
+
+            // Le compte administrateur est protégé, comme pour le changement de pseudo.
+            if (GetRole(StringHelper.NormalizeString(user.DisplayName ?? "")) == "administrators")
+            { throw new BaseException(-7, src, "Le compte administrateur ne peut pas être supprimé. Rien n'a été supprimé."); }
+
+            // Les groupes créés par ce compte.
+            var groupesCrees = await dbContext.Groups
+                .Include(i => i.Members)
+                .Where(w => w.CreatorId.Equals(userId))
+                .ToListAsync();
+
+            var bloquants = groupesCrees
+                .Where(g => g.Members.Any(m => !m.UserId.Equals(userId)))
+                .Select(g => g.Name)
+                .ToList();
+            if (bloquants.Count > 0)
+            {
+                throw new BaseException(-5, src,
+                    user.DisplayName + " a créé un groupe où il reste d'autres membres ("
+                    + string.Join(", ", bloquants) + "). Rien n'a été supprimé.");
+            }
+
+            var res = new DeleteAccountResult { Id = user.Id, DisplayName = user.DisplayName };
+
+            // Les pronostics, et le détail des compositions qui leur est rattaché.
+            var pronos = await dbContext.UserMatches
+                .Where(w => w.UserId.Equals(userId))
+                .ToListAsync();
+            var pronoIds = pronos.Select(p => p.Id).ToList();
+            var compos = await dbContext.UserPlayerForMatches
+                .Where(w => pronoIds.Contains(w.UserMatchId))
+                .ToListAsync();
+            res.PronosSupprimes = pronos.Count;
+            dbContext.UserPlayerForMatches.RemoveRange(compos);
+            dbContext.UserMatches.RemoveRange(pronos);
+
+            // Groupes rejoints, créés par d'autres : on retire seulement l'adhésion.
+            var idsCrees = groupesCrees.Select(g => g.Id).ToHashSet();
+            var adhesions = await dbContext.GroupMembers
+                .Include(i => i.Group)
+                .ThenInclude(g => g.Members)
+                .Where(w => w.UserId.Equals(userId))
+                .ToListAsync();
+            var groupesVides = new List<Group>();
+            foreach (var a in adhesions.Where(w => !idsCrees.Contains(w.GroupId)))
+            {
+                if (a.Group.Members.Count <= 1)
+                {
+                    groupesVides.Add(a.Group);
+                    res.GroupesSupprimes.Add(a.Group.Name);
+                }
+                else
+                {
+                    res.GroupesQuittes.Add(a.Group.Name);
+                }
+            }
+            dbContext.GroupMembers.RemoveRange(adhesions);
+            dbContext.Groups.RemoveRange(groupesVides);
+
+            foreach (var g in groupesCrees)
+            {
+                res.GroupesSupprimes.Add(g.Name);
+            }
+            dbContext.Groups.RemoveRange(groupesCrees);
+
+            var amis = await dbContext.Friends
+                .Where(w => w.User0Id.Equals(userId) || w.User1Id.Equals(userId))
+                .ToListAsync();
+            res.AmisRetires = amis.Count;
+            dbContext.Friends.RemoveRange(amis);
+
+            var abonnements = await dbContext.Followers
+                .Where(w => w.UserId.Equals(userId) || w.FollowerId.Equals(userId))
+                .ToListAsync();
+            res.AbonnementsRetires = abonnements.Count;
+            dbContext.Followers.RemoveRange(abonnements);
+
+            var notifications = await dbContext.Subscriptions
+                .Where(w => w.UserId.Equals(userId))
+                .ToListAsync();
+            res.NotificationsRetirees = notifications.Count;
+            dbContext.Subscriptions.RemoveRange(notifications);
+
+            // Tout ou rien, comme pour la suppression ordinaire.
+            using (var transaction = await dbContext.Database.BeginTransactionAsync())
+            {
+                await dbContext.SaveChangesAsync();
+                dbContext.Users.Remove(user);
+                await dbContext.SaveChangesAsync();
+                await transaction.CommitAsync();
+            }
+
+            res.Supprime = true;
+            return res;
         }
 
         // Changement de pseudo d'un compte existant. Usage privé du fondateur,
