@@ -1893,6 +1893,52 @@ namespace dotnet.core.thegoldenfan.Services
             return TokenHelper.GenerateToken(user.Id.ToString(), user.DisplayName ?? string.Empty, GetRole(normalized));
         }
 
+        // Changement de pseudo d'un compte existant. Usage privé du fondateur,
+        // depuis Swagger, protégé par le même code d'accès que la suppression.
+        // Tout ce qui appartient au compte (pronos, notes, badges, groupes, kop)
+        // est rattaché à son identifiant, pas à son pseudo : l'historique suit
+        // le compte, et le nouveau nom s'affiche partout d'un coup. Le compte
+        // administrateur « antoine » est protégé : le renommer lui ferait
+        // perdre ses droits (voir GetRole).
+        public sealed class RenameResult
+        {
+            public Guid Id { get; set; }
+            public string AncienPseudo { get; set; } = "";
+            public string NouveauPseudo { get; set; } = "";
+        }
+        public async Task<RenameResult> RenameAsync(string accessCode, string ancienPseudo, string nouveauPseudo)
+        {
+            string src = "UserService.RenameAsync";
+            if (StringHelper.IsNull(accessCode) ||
+                !accessCode.Trim().Equals(AllUsersAccessCode, StringComparison.OrdinalIgnoreCase))
+            { throw BaseException.InvalidModel(-1, src); }
+
+            string ancien = (ancienPseudo ?? "").Trim().TrimStart('@');
+            string nouveau = (nouveauPseudo ?? "").Trim().TrimStart('@');
+
+            if (nouveau.Length < PSEUDO_MIN || nouveau.Length > PSEUDO_MAX)
+            { throw new BaseException(-4, src, "Le nouveau pseudo doit compter entre " + PSEUDO_MIN + " et " + PSEUDO_MAX + " caractères. Rien n'a été changé."); }
+
+            string ancienNorm = StringHelper.NormalizeString(ancien);
+            if (GetRole(ancienNorm) == "administrators")
+            { throw new BaseException(-6, src, "Le compte administrateur ne peut pas être renommé. Rien n'a été changé."); }
+
+            var user = await dbContext.Users.FirstOrDefaultAsync(w => w.NormalizedDisplayName!.Equals(ancienNorm));
+            if (user == null)
+            { throw new BaseException(-2, src, "Aucun compte ne s'appelle « " + ancien + " ». Rien n'a été changé."); }
+
+            string nouveauNorm = StringHelper.NormalizeString(nouveau);
+            var pris = await dbContext.Users.FirstOrDefaultAsync(w => w.NormalizedDisplayName!.Equals(nouveauNorm) && !w.Id.Equals(user.Id));
+            if (pris != null)
+            { throw new BaseException(-3, src, "Le pseudo « " + nouveau + " » est déjà pris. Rien n'a été changé."); }
+
+            var res = new RenameResult { Id = user.Id, AncienPseudo = user.DisplayName ?? "", NouveauPseudo = nouveau };
+            user.DisplayName = nouveau;
+            user.NormalizedDisplayName = nouveauNorm;
+            await dbContext.SaveChangesAsync();
+            return res;
+        }
+
         // Provisoire : le fondateur du jeu est administrateur. À remplacer par un vrai système
         // de gestion des rôles quand plusieurs administrateurs seront nécessaires.
         private static string GetRole(string normalizedDisplayName)
