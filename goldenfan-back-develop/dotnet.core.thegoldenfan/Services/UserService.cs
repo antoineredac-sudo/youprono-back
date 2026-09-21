@@ -296,12 +296,12 @@ namespace dotnet.core.thegoldenfan.Services
             string cle = Environment.GetEnvironmentVariable("BREVO_API_KEY") ?? "";
             if (string.IsNullOrWhiteSpace(cle)) { return; }
 
-            string expediteur = Environment.GetEnvironmentVariable("MAIL_FROM") ?? "contact@youprono.fr";
+            string expediteur = Environment.GetEnvironmentVariable("MAIL_FROM") ?? "contact@thegoldenfan.fr";
             string nom = System.Net.WebUtility.HtmlEncode(pseudo);
 
             // Le meme lien que dans les rappels : un seul interrupteur, une seule
             // facon de s'en aller.
-            string lienStop = "https://youprono.fr/#stop/" + userId.ToString();
+            string lienStop = "https://thegoldenfan.fr/#stop/" + userId.ToString();
 
             // Ce message ne dit qu'une chose : bienvenue, et voila l'esprit du jeu.
             // Ni affiche du prochain match, ni bouton : le joueur vient de s'inscrire,
@@ -318,11 +318,11 @@ namespace dotnet.core.thegoldenfan.Services
               + "devin&eacute; que le match serait engag&eacute;. Tout le monde avait raison et "
               + "personne n'avait tort. D&eacute;sormais nous pouvons savoir qui avait vu juste.</p>"
 
-              + PARA + "Sur YouProno, tu fais tes pr&eacute;dictions jusqu'&agrave; 2 heures avant "
+              + PARA + "Sur The Golden Fan, tu fais tes pr&eacute;dictions jusqu'&agrave; 2 heures avant "
               + "le coup d'envoi et elles seront compar&eacute;es aux stats officielles juste "
               + "apr&egrave;s la fin du match pour te donner une note.</p>"
 
-              + PARA + "YouProno est un jeu gratuit et sans publicit&eacute; cr&eacute;&eacute; "
+              + PARA + "The Golden Fan est un jeu gratuit et sans publicit&eacute; cr&eacute;&eacute; "
               + "par des supporters du PSG depuis de longues ann&eacute;es.</p>"
 
               + "<p style=\"font-family:" + POLICE + ";font-size:16px;line-height:1.7;"
@@ -338,10 +338,10 @@ namespace dotnet.core.thegoldenfan.Services
               + "large victoire parisienne. Et puis il y a celui qui avait devine que le match "
               + "serait engage. Tout le monde avait raison et personne n'avait tort. Desormais "
               + "nous pouvons savoir qui avait vu juste.\n\n"
-              + "Sur YouProno, tu fais tes predictions jusqu'a 2 heures avant le coup d'envoi et "
+              + "Sur The Golden Fan, tu fais tes predictions jusqu'a 2 heures avant le coup d'envoi et "
               + "elles seront comparees aux stats officielles juste apres la fin du match pour te "
               + "donner une note.\n\n"
-              + "YouProno est un jeu gratuit et sans publicite cree par des supporters du PSG "
+              + "The Golden Fan est un jeu gratuit et sans publicite cree par des supporters du PSG "
               + "depuis de longues annees.\n\n"
               + "Bons pronos et Allez Paris\n\n"
               + "@lepsgdantoine\n\n"
@@ -350,9 +350,9 @@ namespace dotnet.core.thegoldenfan.Services
 
             var charge = new
             {
-                sender = new { name = "YouProno", email = expediteur },
+                sender = new { name = "The Golden Fan", email = expediteur },
                 to = new[] { new { email = adresse } },
-                replyTo = new { email = expediteur, name = "YouProno" },
+                replyTo = new { email = expediteur, name = "The Golden Fan" },
                 subject = "Bienvenue sur ton nouveau terrain de jeu",
                 htmlContent = corps,
                 textContent = texteBrut,
@@ -376,6 +376,195 @@ namespace dotnet.core.thegoldenfan.Services
             catch
             {
                 // Un envoi qui echoue ne bloque pas les suivants.
+            }
+        }
+
+        // ===== L'ANNONCE « YOUPRONO DEVIENT THE GOLDEN FAN » =====
+        // Un courriel unique, envoye une seule fois a chaque inscrit qui a une
+        // adresse, y compris a ceux qui ont refuse les rappels avant match : ce
+        // n'est pas une relance du jeu, c'est une information sur leur compte.
+        // Texte d'Antoine, valide le 19 septembre 2026.
+        //
+        // Deux usages, depuis Swagger, en POST pour qu'aucune visite d'adresse ne
+        // puisse le declencher :
+        //   - le test : un seul destinataire, choisi par son pseudo, sans rien
+        //     noter en base — on peut le refaire autant de fois qu'on veut ;
+        //   - l'envoi : tous ceux qui ne l'ont pas encore recu. La colonne
+        //     AnnounceSentAt n'est remplie que si Brevo a accepte le message :
+        //     relancer la route ne reprend que les oublies et les echecs.
+
+        public class AnnounceResult
+        {
+            public int Envoyes { get; set; }
+            public int Echecs { get; set; }
+            public int DejaRecus { get; set; }
+            public int SansAdresse { get; set; }
+            public List<string> Pseudos { get; set; } = new();
+            public List<string> PseudosEnEchec { get; set; } = new();
+        }
+
+        private static int enCoursAnnonce = 0;
+
+        // Le cadeau du defi culture club, nomme dans le courriel d'annonce.
+        // A REMPLIR avant le depot : le libelle HTML et sa version texte brut.
+        private const string CADEAU = "[le cadeau]";
+        private const string CADEAU_TEXTE = "[le cadeau]";
+
+        public async Task<AnnounceResult> AnnounceTestAsync(string displayName)
+        {
+            var result = new AnnounceResult();
+            var user = await dbContext.Users.FirstOrDefaultAsync(w => w.DisplayName == displayName);
+            if (user == null || string.IsNullOrWhiteSpace(user.Email)) { result.SansAdresse = 1; return result; }
+
+            bool ok = await EnvoyerAnnonceAsync(user.Email!, user.DisplayName ?? "", user.Id);
+            if (ok) { result.Envoyes = 1; result.Pseudos.Add(user.DisplayName ?? ""); }
+            else { result.Echecs = 1; result.PseudosEnEchec.Add(user.DisplayName ?? ""); }
+            return result;
+        }
+
+        public async Task<AnnounceResult> AnnounceAllAsync()
+        {
+            var result = new AnnounceResult();
+
+            if (System.Threading.Interlocked.CompareExchange(ref enCoursAnnonce, 1, 0) != 0)
+            { return result; }
+
+            try
+            {
+                result.DejaRecus = await dbContext.Users.CountAsync(w => w.AnnounceSentAt != null);
+                result.SansAdresse = await dbContext.Users.CountAsync(w => w.Email == null || w.Email == "");
+
+                var destinataires = await dbContext.Users
+                    .Where(w => w.AnnounceSentAt == null && w.Email != null && w.Email != "")
+                    .ToListAsync();
+
+                foreach (var user in destinataires)
+                {
+                    bool ok = await EnvoyerAnnonceAsync(user.Email!, user.DisplayName ?? "", user.Id);
+                    if (ok)
+                    {
+                        // Note apres chaque envoi : une interruption ne fait
+                        // perdre que le message en cours.
+                        user.AnnounceSentAt = DateTime.UtcNow;
+                        await dbContext.SaveChangesAsync();
+                        result.Envoyes++;
+                        result.Pseudos.Add(user.DisplayName ?? "");
+                    }
+                    else
+                    {
+                        result.Echecs++;
+                        result.PseudosEnEchec.Add(user.DisplayName ?? "");
+                    }
+
+                    await Task.Delay(ENVOI_ESPACEMENT_MS);
+                }
+            }
+            finally { System.Threading.Interlocked.Exchange(ref enCoursAnnonce, 0); }
+
+            return result;
+        }
+
+        // Renvoie true seulement si Brevo a accepte le message.
+        private static async Task<bool> EnvoyerAnnonceAsync(string adresse, string pseudo, Guid userId)
+        {
+            string cle = Environment.GetEnvironmentVariable("BREVO_API_KEY") ?? "";
+            if (string.IsNullOrWhiteSpace(cle)) { return false; }
+
+            string expediteur = Environment.GetEnvironmentVariable("MAIL_FROM") ?? "contact@thegoldenfan.fr";
+            string lienStop = "https://thegoldenfan.fr/#stop/" + userId.ToString();
+            string nom = System.Net.WebUtility.HtmlEncode(pseudo);
+
+            string contenu =
+                PARA + "Salut " + nom + ",</p>"
+
+              + PARA + "&Agrave; partir d'aujourd'hui, YouProno s'appelle The Golden Fan. "
+              + "Ce nouveau nom repr&eacute;sente mieux ce que nous cherchons ensemble : "
+              + "r&eacute;compenser l'expertise des supporters du PSG.</p>"
+
+              + PARA + "Pour toi, rien ne change : ton pseudo, ton mot de passe, tes groupes et ta "
+              + "place au classement t'attendent sur <a href=\"https://thegoldenfan.fr\" style=\"color:"
+              + C_OR + ";font-weight:bold;text-decoration:none;\">thegoldenfan.fr</a>. Si tu avais mis "
+              + "le jeu sur l'&eacute;cran d'accueil de ton t&eacute;l&eacute;phone, supprime l'ancienne "
+              + "ic&ocirc;ne et r&eacute;installe-le depuis la nouvelle adresse.</p>"
+
+              + "<p style=\"font-family:" + POLICE + ";font-size:17px;line-height:1.6;"
+              + "color:" + C_OR + ";margin:24px 0 12px;font-weight:bold;\">Pendant la tr&ecirc;ve, "
+              + "nous allons tester ta culture club.</p>"
+
+              + PARA + "Jusqu'au 2 octobre, trois nouvelles questions sur l'histoire du PSG "
+              + "t'attendent chaque jour :</p>"
+              + "<ul style=\"font-family:" + POLICE + ";font-size:16px;line-height:1.7;color:"
+              + C_TEXTE + ";margin:0 0 16px;padding-left:22px;\">"
+              + "<li>une facile &agrave; 1 point, une moyenne &agrave; 2 points, une difficile &agrave; 3 points ;</li>"
+              + "<li>4 r&eacute;ponses au choix et 15 secondes pour r&eacute;pondre ;</li>"
+              + "<li>&agrave; &eacute;galit&eacute; de points, le plus rapide passe devant.</li></ul>"
+
+              + PARA + "Tu as manqu&eacute; un jour ? Les questions restent jouables jusqu'au "
+              + "dimanche 4 octobre &agrave; 18 h.</p>"
+
+              + PARA + "&Agrave; la cl&ocirc;ture, le vainqueur sera tir&eacute; au sort parmi les "
+              + "5 premiers du classement. &Agrave; la cl&eacute; : " + CADEAU + ".</p>"
+
+              + BoutonHtml("https://thegoldenfan.fr/#culture-club", "Je rel&egrave;ve mon premier d&eacute;fi", false, false)
+
+              + PARA + "Prochain rendez-vous sur le terrain : <span style=\"white-space:nowrap;\">"
+              + "PSG &ndash; Le Mans</span>, le samedi 10 octobre.</p>"
+
+              + "<p style=\"font-family:" + POLICE + ";font-size:16px;line-height:1.7;"
+              + "color:" + C_TEXTE + ";margin:22px 0 0;\">Je te souhaite de relever le d&eacute;fi.<br>"
+              + "Allez Paris,<br><br>Antoine</p>";
+
+            string corps = CadreHtml("Le jeu des experts du PSG", contenu, lienStop);
+
+            string texteBrut =
+                "Salut " + pseudo + ",\n\n"
+              + "A partir d'aujourd'hui, YouProno s'appelle The Golden Fan. Ce nouveau nom represente "
+              + "mieux ce que nous cherchons ensemble : recompenser l'expertise des supporters du PSG.\n\n"
+              + "Pour toi, rien ne change : ton pseudo, ton mot de passe, tes groupes et ta place au "
+              + "classement t'attendent sur thegoldenfan.fr. Si tu avais mis le jeu sur l'ecran d'accueil "
+              + "de ton telephone, supprime l'ancienne icone et reinstalle-le depuis la nouvelle adresse.\n\n"
+              + "Pendant la treve, nous allons tester ta culture club.\n\n"
+              + "Jusqu'au 2 octobre, trois nouvelles questions sur l'histoire du PSG t'attendent chaque jour :\n"
+              + "- une facile a 1 point, une moyenne a 2 points, une difficile a 3 points ;\n"
+              + "- 4 reponses au choix et 15 secondes pour repondre ;\n"
+              + "- a egalite de points, le plus rapide passe devant.\n\n"
+              + "Tu as manque un jour ? Les questions restent jouables jusqu'au dimanche 4 octobre a 18 h.\n\n"
+              + "A la cloture, le vainqueur sera tire au sort parmi les 5 premiers du classement. A la cle : "
+              + CADEAU_TEXTE + ".\n\n"
+              + "Je releve mon premier defi : https://thegoldenfan.fr/#culture-club\n\n"
+              + "Prochain rendez-vous sur le terrain : PSG - Le Mans, le samedi 10 octobre.\n\n"
+              + "Je te souhaite de relever le defi.\nAllez Paris,\n\n"
+              + "Antoine\n\n"
+              + "---\n"
+              + "Ne plus recevoir de rappel avant match : " + lienStop;
+
+            var charge = new
+            {
+                sender = new { name = "The Golden Fan", email = expediteur },
+                to = new[] { new { email = adresse } },
+                replyTo = new { email = expediteur, name = "The Golden Fan" },
+                subject = "YouProno devient The Golden Fan",
+                htmlContent = corps,
+                textContent = texteBrut,
+                headers = new Dictionary<string, string>
+                {
+                    { "List-Unsubscribe", "<" + lienStop + ">" },
+                    { "List-Unsubscribe-Post", "List-Unsubscribe=One-Click" }
+                }
+            };
+
+            try
+            {
+                using var req = new HttpRequestMessage(HttpMethod.Post, "https://api.brevo.com/v3/smtp/email");
+                req.Headers.Add("api-key", cle);
+                req.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
+                req.Content = new StringContent(JsonSerializer.Serialize(charge), Encoding.UTF8, "application/json");
+                using var rep = await http.SendAsync(req);
+                return rep.IsSuccessStatusCode;
+            }
+            catch
+            {
+                return false;
             }
         }
 
@@ -535,20 +724,20 @@ namespace dotnet.core.thegoldenfan.Services
             "<p style=\"font-family:Arial,Helvetica,sans-serif;font-size:16px;line-height:1.7;"
           + "color:#ffffff;margin:0 0 16px;\">";
 
-        // Le bandeau du haut : le blason hexagonal, le nom en or, un filet dore.
-        // Le logo est deja en ligne sur le site, aucune image a televerser.
+        // Le bandeau du haut : le logo The Golden Fan sans signature, l'etiquette du
+        // courriel en or dessous, un filet dore (valide par Antoine le 19 septembre
+        // 2026). Le logo est une image PNG hebergee sur le site : les messageries
+        // n'affichent pas le SVG.
         private static string EnteteHtml(string surtitre)
         {
             return
               "<tr><td style=\"background:" + C_BANDE + ";border-bottom:2px solid " + C_OR + ";"
             + "padding:20px 24px;text-align:center;\">"
-            + "<img src=\"https://youprono.fr/icone-192.png\" width=\"44\" height=\"44\" alt=\"\" "
-            + "style=\"display:block;margin:0 auto 8px;border:0;\">"
-            + "<div style=\"font-family:" + POLICE + ";font-size:21px;font-weight:bold;"
-            + "letter-spacing:2px;color:" + C_OR + ";\">YOUPRONO</div>"
+            + "<img src=\"https://thegoldenfan.fr/logo-courriel.png\" width=\"200\" alt=\"The Golden Fan\" "
+            + "style=\"display:block;margin:0 auto;border:0;width:200px;max-width:100%;height:auto;\">"
             + (string.IsNullOrEmpty(surtitre) ? ""
                : "<div style=\"font-family:" + POLICE + ";font-size:11px;letter-spacing:2px;"
-                 + "color:" + C_GRIS + ";margin-top:6px;text-transform:uppercase;\">" + surtitre + "</div>")
+                 + "color:" + C_OR + ";margin-top:12px;text-transform:uppercase;\">" + surtitre + "</div>")
             + "</td></tr>";
         }
 
@@ -575,7 +764,7 @@ namespace dotnet.core.thegoldenfan.Services
             string fond = vert ? C_VERT : C_ROUGE;
             string encre = vert ? C_VERTENCRE : C_TEXTE;
             string image = picto
-                ? "<img src=\"https://youprono.fr/whatsapp.png\" width=\"18\" height=\"18\" alt=\"\" "
+                ? "<img src=\"https://thegoldenfan.fr/whatsapp.png\" width=\"18\" height=\"18\" alt=\"\" "
                   + "style=\"vertical-align:-3px;margin-right:8px;border:0;\">"
                 : "";
 
@@ -743,6 +932,10 @@ namespace dotnet.core.thegoldenfan.Services
                 .Where(w => w.EmailOptIn && w.Email != null && w.Email != ""
                          && (w.LastReminderMatchId == null || w.LastReminderMatchId != match.Id)
                          && (w.WelcomeSentAt == null || w.WelcomeSentAt < debutJournee)
+                         // Retabli le 20 septembre 2026 (demande d'Antoine) : quota
+                         // Brevo limite, et un joueur qui a deja joue n'a que faire
+                         // d'un rappel — il risquerait meme de se desabonner.
+                         && !ontJoue.Contains(w.Id)
                          )
                 .ToListAsync();
 
@@ -788,9 +981,9 @@ namespace dotnet.core.thegoldenfan.Services
             string cle = Environment.GetEnvironmentVariable("BREVO_API_KEY") ?? "";
             if (string.IsNullOrWhiteSpace(cle)) { return; }
 
-            string expediteur = Environment.GetEnvironmentVariable("MAIL_FROM") ?? "contact@youprono.fr";
+            string expediteur = Environment.GetEnvironmentVariable("MAIL_FROM") ?? "contact@thegoldenfan.fr";
             string nom = System.Net.WebUtility.HtmlEncode(pseudo);
-            string lienStop = "https://youprono.fr/#stop/" + userId.ToString();
+            string lienStop = "https://thegoldenfan.fr/#stop/" + userId.ToString();
 
             // « faire et modifier » pour celui qui n'a rien fait, « modifier »
             // seulement pour celui qui a deja pronostique.
@@ -825,8 +1018,8 @@ namespace dotnet.core.thegoldenfan.Services
                        "Coup d'envoi &agrave; " + heureMatch + " &middot; pronos ferm&eacute;s &agrave; "
                      + heureCloture)
                    + PARA + "Tu peux modifier tes pronos jusqu'&agrave; " + heureCloture + ".</p>"
-                   + BoutonHtml("https://youprono.fr", libelleBouton, false, false)
-                 : BoutonHtml("https://youprono.fr", libelleBouton, false, false)
+                   + BoutonHtml("https://thegoldenfan.fr", libelleBouton, false, false)
+                 : BoutonHtml("https://thegoldenfan.fr", libelleBouton, false, false)
                    + BlocMatchHtml(System.Net.WebUtility.HtmlEncode(affiche),
                        "Coup d'envoi &agrave; " + heureMatch + " &middot; pronos ferm&eacute;s &agrave; "
                      + heureCloture))
@@ -850,7 +1043,7 @@ namespace dotnet.core.thegoldenfan.Services
                     + affiche + " - coup d'envoi a " + heureMatch + ", pronos fermes a "
                     + heureCloture + ".")
               + "\n\n"
-              + "https://youprono.fr\n\n"
+              + "https://thegoldenfan.fr\n\n"
               + "Bons pronos, bon match et surtout Allez Paris\n\n"
               + "@lepsgdantoine\n\n"
               + "---\n"
@@ -858,9 +1051,9 @@ namespace dotnet.core.thegoldenfan.Services
 
             var charge = new
             {
-                sender = new { name = "YouProno", email = expediteur },
+                sender = new { name = "The Golden Fan", email = expediteur },
                 to = new[] { new { email = adresse } },
-                replyTo = new { email = expediteur, name = "YouProno" },
+                replyTo = new { email = expediteur, name = "The Golden Fan" },
                 // L'affiche d'abord, l'appel ensuite : c'est le nom du match qui
                 // accroche un supporter dans une liste de messages.
                 subject = aDejaJoue
@@ -1084,10 +1277,10 @@ namespace dotnet.core.thegoldenfan.Services
             string cle = Environment.GetEnvironmentVariable("BREVO_API_KEY") ?? "";
             if (string.IsNullOrWhiteSpace(cle)) { return; }
 
-            string expediteur = Environment.GetEnvironmentVariable("MAIL_FROM") ?? "contact@youprono.fr";
+            string expediteur = Environment.GetEnvironmentVariable("MAIL_FROM") ?? "contact@thegoldenfan.fr";
             string nom = System.Net.WebUtility.HtmlEncode(pseudo);
             string aff = System.Net.WebUtility.HtmlEncode(affiche);
-            string lienStop = "https://youprono.fr/#stop/" + userId.ToString();
+            string lienStop = "https://thegoldenfan.fr/#stop/" + userId.ToString();
             string noteTexte = forfait.ToString("0.000",
                 System.Globalization.CultureInfo.GetCultureInfo("fr-FR"));
 
@@ -1118,25 +1311,7 @@ namespace dotnet.core.thegoldenfan.Services
               + PARA + "Les pronos pour le prochain match sont ouverts, tu vas pouvoir prendre "
               + "ta revanche.</p>"
 
-              + BoutonHtml("https://youprono.fr", "Je fais mes pronos", false, false)
-
-              // Le teaser de la treve, le meme que dans le courriel de resultat
-              // (20 septembre 2026). Temporaire : il disparait avec le UserService.cs
-              // du changement de nom, le 23.
-              + "<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" "
-              + "style=\"margin:22px 0 0;\"><tr>"
-              + "<td style=\"border:1px solid " + C_OR + ";border-radius:10px;padding:16px 18px;"
-              + "text-align:center;\">"
-              + "<div style=\"font-family:" + POLICE + ";font-size:16px;line-height:1.6;"
-              + "color:" + C_TEXTE + ";font-weight:bold;\">Dans la journ&eacute;e, YouProno devient "
-              + "<span style=\"color:" + C_OR + ";\">The Golden Fan</span>. M&ecirc;me jeu, m&ecirc;me "
-              + "classement, m&ecirc;mes points : seuls le nom et l'adresse changent, et youprono.fr "
-              + "te conduira tout seul au nouveau site.</div>"
-              + "<div style=\"font-family:" + POLICE + ";font-size:16px;line-height:1.6;"
-              + "color:" + C_TEXTE + ";margin:10px 0 0;\">Et &agrave; partir de mercredi, pendant la "
-              + "tr&ecirc;ve, nous allons tester ta culture club : trois questions par jour jusqu'au "
-              + "vendredi 2 octobre. Je te souhaite de relever le d&eacute;fi.</div>"
-              + "</td></tr></table>"
+              + BoutonHtml("https://thegoldenfan.fr", "Je fais mes pronos", false, false)
 
               + "<p style=\"font-family:" + POLICE + ";font-size:16px;line-height:1.7;"
               + "color:" + C_OR + ";margin:22px 0 0;font-weight:bold;\">Allez Paris</p>";
@@ -1151,12 +1326,7 @@ namespace dotnet.core.thegoldenfan.Services
               + "eliminatoire : pres d'un joueur sur trois a fait moins bien en ayant joue.\n\n"
               + "Les pronos pour le prochain match sont ouverts, tu vas pouvoir prendre ta "
               + "revanche.\n\n"
-              + "https://youprono.fr\n\n"
-              + "Dans la journee, YouProno devient The Golden Fan. Meme jeu, meme classement, memes "
-              + "points : seuls le nom et l'adresse changent, et youprono.fr te conduira tout seul "
-              + "au nouveau site.\n\n"
-              + "Et a partir de mercredi, pendant la treve, nous allons tester ta culture club : "
-              + "trois questions par jour jusqu'au vendredi 2 octobre. Je te souhaite de relever le defi.\n\n"
+              + "https://thegoldenfan.fr\n\n"
               + "Allez Paris\n\n"
               + "@lepsgdantoine\n\n"
               + "---\n"
@@ -1164,9 +1334,9 @@ namespace dotnet.core.thegoldenfan.Services
 
             var charge = new
             {
-                sender = new { name = "YouProno", email = expediteur },
+                sender = new { name = "The Golden Fan", email = expediteur },
                 to = new[] { new { email = adresse } },
-                replyTo = new { email = expediteur, name = "YouProno" },
+                replyTo = new { email = expediteur, name = "The Golden Fan" },
                 subject = "Prends ta revanche lors du prochain match",
                 htmlContent = corps,
                 textContent = texteBrut,
@@ -1194,10 +1364,10 @@ namespace dotnet.core.thegoldenfan.Services
             string cle = Environment.GetEnvironmentVariable("BREVO_API_KEY") ?? "";
             if (string.IsNullOrWhiteSpace(cle)) { return; }
 
-            string expediteur = Environment.GetEnvironmentVariable("MAIL_FROM") ?? "contact@youprono.fr";
+            string expediteur = Environment.GetEnvironmentVariable("MAIL_FROM") ?? "contact@thegoldenfan.fr";
             string nom = System.Net.WebUtility.HtmlEncode(pseudo);
             string aff = System.Net.WebUtility.HtmlEncode(affiche);
-            string lienStop = "https://youprono.fr/#stop/" + userId.ToString();
+            string lienStop = "https://thegoldenfan.fr/#stop/" + userId.ToString();
             string noteTexte = note.ToString("0.000", System.Globalization.CultureInfo.GetCultureInfo("fr-FR"));
 
             // « Hier » n'est vrai que le lendemain. Quand les statistiques ont ete
@@ -1236,31 +1406,14 @@ namespace dotnet.core.thegoldenfan.Services
               + PARA + "D&eacute;couvre tous tes r&eacute;sultats en d&eacute;tail, les badges que tu as "
               + "peut-&ecirc;tre d&eacute;bloqu&eacute;s et ton nouveau classement.</p>"
 
-              + BoutonHtml("https://youprono.fr/#results", "Mon r&eacute;sultat", false, false)
+              + BoutonHtml("https://thegoldenfan.fr/#results", "Mon r&eacute;sultat", false, false)
 
               // L'invitation a creer un groupe, sous le classement (texte d'Antoine,
               // 20 septembre 2026). Le bouton ouvre directement l'ecran ou l'on
               // nomme son groupe ; WhatsApp s'ouvre ensuite avec l'invitation.
               + PARA + "Si tu as envie de te confronter &agrave; tes amis lors du prochain match, "
               + "invite-les sur WhatsApp.</p>"
-              + BoutonHtml("https://youprono.fr/#creer-groupe", "Cr&eacute;er un groupe", true, true)
-
-              // Le teaser de la treve (texte d'Antoine, 20 septembre 2026). Temporaire :
-              // il disparait avec le UserService.cs du changement de nom, le 23.
-              + "<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" "
-              + "style=\"margin:22px 0 0;\"><tr>"
-              + "<td style=\"border:1px solid " + C_OR + ";border-radius:10px;padding:16px 18px;"
-              + "text-align:center;\">"
-              + "<div style=\"font-family:" + POLICE + ";font-size:16px;line-height:1.6;"
-              + "color:" + C_TEXTE + ";font-weight:bold;\">Dans la journ&eacute;e, YouProno devient "
-              + "<span style=\"color:" + C_OR + ";\">The Golden Fan</span>. M&ecirc;me jeu, m&ecirc;me "
-              + "classement, m&ecirc;mes points : seuls le nom et l'adresse changent, et youprono.fr "
-              + "te conduira tout seul au nouveau site.</div>"
-              + "<div style=\"font-family:" + POLICE + ";font-size:16px;line-height:1.6;"
-              + "color:" + C_TEXTE + ";margin:10px 0 0;\">Et &agrave; partir de mercredi, pendant la "
-              + "tr&ecirc;ve, nous allons tester ta culture club : trois questions par jour jusqu'au "
-              + "vendredi 2 octobre. Je te souhaite de relever le d&eacute;fi.</div>"
-              + "</td></tr></table>"
+              + BoutonHtml("https://thegoldenfan.fr/#creer-groupe", "Cr&eacute;er un groupe", true, true)
 
               + "<p style=\"font-family:" + POLICE + ";font-size:16px;line-height:1.7;"
               + "color:" + C_OR + ";margin:22px 0 0;font-weight:bold;\">Allez Paris</p>";
@@ -1273,14 +1426,9 @@ namespace dotnet.core.thegoldenfan.Services
               + (string.IsNullOrEmpty(verdict) ? "" : verdict + "\n\n")
               + "Decouvre tous tes resultats en detail, les badges que tu as peut-etre debloques "
               + "et ton nouveau classement.\n\n"
-              + "Mon resultat : https://youprono.fr/#results\n\n"
+              + "Mon resultat : https://thegoldenfan.fr/#results\n\n"
               + "Si tu as envie de te confronter a tes amis lors du prochain match, invite-les sur WhatsApp.\n\n"
-              + "Creer un groupe : https://youprono.fr/#creer-groupe\n\n"
-              + "Dans la journee, YouProno devient The Golden Fan. Meme jeu, meme classement, memes "
-              + "points : seuls le nom et l'adresse changent, et youprono.fr te conduira tout seul "
-              + "au nouveau site.\n\n"
-              + "Et a partir de mercredi, pendant la treve, nous allons tester ta culture club : "
-              + "trois questions par jour jusqu'au vendredi 2 octobre. Je te souhaite de relever le defi.\n\n"
+              + "Creer un groupe : https://thegoldenfan.fr/#creer-groupe\n\n"
               + "Allez Paris\n\n"
               + "@lepsgdantoine\n\n"
               + "---\n"
@@ -1288,9 +1436,9 @@ namespace dotnet.core.thegoldenfan.Services
 
             var charge = new
             {
-                sender = new { name = "YouProno", email = expediteur },
+                sender = new { name = "The Golden Fan", email = expediteur },
                 to = new[] { new { email = adresse } },
-                replyTo = new { email = expediteur, name = "YouProno" },
+                replyTo = new { email = expediteur, name = "The Golden Fan" },
                 subject = "Ta note sur " + affiche,
                 htmlContent = corps,
                 textContent = texteBrut,
@@ -1393,14 +1541,15 @@ namespace dotnet.core.thegoldenfan.Services
             string cle = Environment.GetEnvironmentVariable("BREVO_API_KEY") ?? "";
             if (string.IsNullOrWhiteSpace(cle)) { return; }
 
-            string expediteur = Environment.GetEnvironmentVariable("MAIL_FROM") ?? "contact@youprono.fr";
-            string lien = "https://youprono.fr/#reset/" + jeton;
+            string expediteur = Environment.GetEnvironmentVariable("MAIL_FROM") ?? "contact@thegoldenfan.fr";
+            string lien = "https://thegoldenfan.fr/#reset/" + jeton;
 
             string corps =
                 "<div style=\"font-family:Arial,sans-serif;background:#0b2265;padding:28px;color:#ffffff;\">"
               + "<div style=\"max-width:520px;margin:0 auto;background:#14306f;border:1px solid #26478e;"
               + "border-radius:12px;padding:26px;\">"
-              + "<div style=\"color:#e8b923;font-size:22px;font-weight:bold;\">YouProno</div>"
+              + "<img src=\"https://thegoldenfan.fr/logo-courriel.png\" width=\"160\" alt=\"The Golden Fan\" "
+              + "style=\"display:block;border:0;width:160px;max-width:100%;height:auto;margin:0 0 6px;\">"
               + "<p style=\"font-size:16px;line-height:1.6;\">Ton pseudo est <b style=\"color:#e8b923;\">"
               + System.Net.WebUtility.HtmlEncode(pseudo) + "</b>.</p>"
               + "<p style=\"font-size:16px;line-height:1.6;\">Si tu as aussi oubli&eacute; ton mot de passe, "
@@ -1415,9 +1564,9 @@ namespace dotnet.core.thegoldenfan.Services
 
             var charge = new
             {
-                sender = new { name = "YouProno", email = expediteur },
+                sender = new { name = "The Golden Fan", email = expediteur },
                 to = new[] { new { email = adresse } },
-                subject = "Ton pseudo YouProno et ton lien de mot de passe",
+                subject = "Ton pseudo et ton lien de mot de passe",
                 htmlContent = corps
             };
 
