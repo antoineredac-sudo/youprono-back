@@ -29,6 +29,74 @@ namespace dotnet.core.thegoldenfan.controllers
             this.service = service;
         }
 
+        // ===== LE DEFI CULTURE CLUB =====
+        // Quatre adresses : l'etat du defi, l'ouverture d'une question (qui lance
+        // le chrono du serveur), la reponse, et le classement.
+
+        [HttpGet("Quiz/Etat/{userId}")]
+        public async Task<ResponseModel<UserMatchService.QuizEtatResult>> QuizEtatAsync(Guid userId)
+        {
+            ResponseModel<UserMatchService.QuizEtatResult> res = ResponseModel<UserMatchService.QuizEtatResult>.CreateDefault();
+            try
+            {
+                var obj = await service.QuizEtatAsync(userId);
+                res = new ResponseModel<UserMatchService.QuizEtatResult>(0, obj);
+            }
+            catch (Exception ex)
+            {
+                res = ResponseModel<UserMatchService.QuizEtatResult>.Exception(ex);
+            }
+            return res;
+        }
+
+        [HttpPost("Quiz/Depart/{userId}/{questionId}")]
+        public async Task<ResponseModel<UserMatchService.QuizDepartResult>> QuizDepartAsync(Guid userId, string questionId)
+        {
+            ResponseModel<UserMatchService.QuizDepartResult> res = ResponseModel<UserMatchService.QuizDepartResult>.CreateDefault();
+            try
+            {
+                var obj = await service.QuizDepartAsync(userId, questionId);
+                res = new ResponseModel<UserMatchService.QuizDepartResult>(0, obj);
+            }
+            catch (Exception ex)
+            {
+                res = ResponseModel<UserMatchService.QuizDepartResult>.Exception(ex);
+            }
+            return res;
+        }
+
+        [HttpPost("Quiz/Reponse/{userId}/{questionId}/{choix}")]
+        public async Task<ResponseModel<UserMatchService.QuizReponseResult>> QuizReponseAsync(Guid userId, string questionId, int choix)
+        {
+            ResponseModel<UserMatchService.QuizReponseResult> res = ResponseModel<UserMatchService.QuizReponseResult>.CreateDefault();
+            try
+            {
+                var obj = await service.QuizReponseAsync(userId, questionId, choix);
+                res = new ResponseModel<UserMatchService.QuizReponseResult>(0, obj);
+            }
+            catch (Exception ex)
+            {
+                res = ResponseModel<UserMatchService.QuizReponseResult>.Exception(ex);
+            }
+            return res;
+        }
+
+        [HttpGet("Quiz/Classement/{userId}")]
+        public async Task<ResponseModel<UserMatchService.QuizClassementResult>> QuizClassementAsync(Guid userId, int limit = 20)
+        {
+            ResponseModel<UserMatchService.QuizClassementResult> res = ResponseModel<UserMatchService.QuizClassementResult>.CreateDefault();
+            try
+            {
+                var obj = await service.QuizClassementAsync(userId, limit);
+                res = new ResponseModel<UserMatchService.QuizClassementResult>(0, obj);
+            }
+            catch (Exception ex)
+            {
+                res = ResponseModel<UserMatchService.QuizClassementResult>.Exception(ex);
+            }
+            return res;
+        }
+
         // La page « La compo officielle est tombee » : le onze du coach, celui du
         // joueur, le decompte des choix et la note de composition, rarete comprise.
         [HttpGet("Compo/{teamId}/{matchId}/{userId}")]
