@@ -477,18 +477,16 @@ namespace dotnet.core.thegoldenfan.Services
             string contenu =
                 PARA + "Salut " + nom + ",</p>"
 
-              + PARA + "Depuis lundi, YouProno s'appelle The Golden Fan. "
-              + "Ce nouveau nom repr&eacute;sente mieux notre promesse de "
-              + "r&eacute;compenser l'expertise des supporters du PSG.</p>"
+              + PARA + "YouProno s'appelle d&eacute;sormais The Golden Fan. Un nouveau nom "
+              + "qui illustre mieux notre promesse : r&eacute;compenser l'expertise des "
+              + "supporters du PSG.</p>"
 
               + PARA + "Pour toi, rien ne change : ton pseudo, ton mot de passe, tes groupes et ta "
               + "place au classement t'attendent sur <a href=\"https://thegoldenfan.fr\" style=\"color:"
-              + C_OR + ";font-weight:bold;text-decoration:none;\">thegoldenfan.fr</a>. Si tu avais mis "
-              + "le jeu sur l'&eacute;cran d'accueil de ton t&eacute;l&eacute;phone, supprime l'ancienne "
-              + "ic&ocirc;ne et r&eacute;installe-le depuis la nouvelle adresse.</p>"
+              + C_OR + ";font-weight:bold;text-decoration:none;\">thegoldenfan.fr</a>.</p>"
 
               + "<p style=\"font-family:" + POLICE + ";font-size:17px;line-height:1.6;"
-              + "color:" + C_OR + ";margin:24px 0 12px;font-weight:bold;\">Pendant la tr&ecirc;ve, "
+              + "color:" + C_OR + ";margin:24px 0 12px;font-weight:bold;\">Pendant la tr&ecirc;ve "
               + "nous allons tester ta culture club.</p>"
               + "<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" "
               + "style=\"margin:4px 0 22px;\"><tr>"
@@ -515,7 +513,6 @@ namespace dotnet.core.thegoldenfan.Services
               + PARA + "&Agrave; la cl&ocirc;ture, le gagnant sera tir&eacute; au sort parmi les "
               + "5 premiers du classement.</p>"
 
-
               + BoutonHtml("https://thegoldenfan.fr/#culture-club", "Je rel&egrave;ve mon premier d&eacute;fi", false, false)
 
               + PARA + "Prochain rendez-vous sur le terrain : <span style=\"white-space:nowrap;\">"
@@ -523,18 +520,23 @@ namespace dotnet.core.thegoldenfan.Services
 
               + "<p style=\"font-family:" + POLICE + ";font-size:16px;line-height:1.7;"
               + "color:" + C_TEXTE + ";margin:22px 0 0;\">"
-              + "Allez Paris,<br><br>Antoine</p>";
+              + "Allez Paris,<br><br>Antoine</p>"
+
+              + "<p style=\"font-family:" + POLICE + ";font-size:15px;line-height:1.65;"
+              + "color:#c2cae8;margin:24px 0 0;border-top:1px solid " + C_BORD + ";padding-top:16px;\">"
+              + "P.-S. &mdash; Si tu avais mis le jeu sur l'&eacute;cran d'accueil de ton "
+              + "t&eacute;l&eacute;phone, supprime l'ancienne ic&ocirc;ne et r&eacute;installe-le "
+              + "depuis la nouvelle adresse.</p>";
 
             string corps = CadreHtml("Le jeu des experts du PSG", contenu, lienStop);
 
             string texteBrut =
                 "Salut " + pseudo + ",\n\n"
-              + "Depuis lundi, YouProno s'appelle The Golden Fan. Ce nouveau nom represente "
-              + "mieux notre promesse de recompenser l'expertise des supporters du PSG.\n\n"
+              + "YouProno s'appelle desormais The Golden Fan. Un nouveau nom qui illustre mieux "
+              + "notre promesse : recompenser l'expertise des supporters du PSG.\n\n"
               + "Pour toi, rien ne change : ton pseudo, ton mot de passe, tes groupes et ta place au "
-              + "classement t'attendent sur thegoldenfan.fr. Si tu avais mis le jeu sur l'ecran d'accueil "
-              + "de ton telephone, supprime l'ancienne icone et reinstalle-le depuis la nouvelle adresse.\n\n"
-              + "Pendant la treve, nous allons tester ta culture club.\n\n"
+              + "classement t'attendent sur thegoldenfan.fr.\n\n"
+              + "Pendant la treve nous allons tester ta culture club.\n\n"
               + "Des aujourd'hui et jusqu'au vendredi 2 octobre, trois nouvelles "
               + "questions sur l'histoire du PSG t'attendent chaque jour :\n"
               + "- une facile a 1 point, une moyenne a 2 points, une difficile a 3 points ;\n"
@@ -546,6 +548,8 @@ namespace dotnet.core.thegoldenfan.Services
               + "Prochain rendez-vous sur le terrain : PSG - Le Mans, le samedi 10 octobre.\n\n"
               + "Allez Paris,\n\n"
               + "Antoine\n\n"
+              + "P.-S. - Si tu avais mis le jeu sur l'ecran d'accueil de ton telephone, supprime "
+              + "l'ancienne icone et reinstalle-le depuis la nouvelle adresse.\n\n"
               + "---\n"
               + "Ne plus recevoir de rappel avant match : " + lienStop;
 
@@ -554,7 +558,7 @@ namespace dotnet.core.thegoldenfan.Services
                 sender = new { name = "The Golden Fan", email = expediteur },
                 to = new[] { new { email = adresse } },
                 replyTo = new { email = expediteur, name = "The Golden Fan" },
-                subject = "Testons ta culture club du PSG",
+                subject = "Pendant la trêve, le PSG reste à l'affiche",
                 htmlContent = corps,
                 textContent = texteBrut,
                 headers = new Dictionary<string, string>
