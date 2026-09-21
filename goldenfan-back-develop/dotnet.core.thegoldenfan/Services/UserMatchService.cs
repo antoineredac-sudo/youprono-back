@@ -519,7 +519,12 @@ namespace dotnet.core.thegoldenfan.Services
             public int Points { get; set; }
             public string Texte { get; set; } = "";
             public List<string> Choix { get; set; } = new();
+            // Le temps qu'il reste a cette question-la, pas la regle generale :
+            // un joueur revenu une seconde fois reprend son chrono en cours.
             public int Secondes { get; set; }
+            // Vrai quand le joueur revient sur une question qu'il avait deja
+            // quittee une fois : le chrono ne repart pas de quinze secondes.
+            public bool Reprise { get; set; }
         }
 
         // Le joueur affiche une question : le serveur note l'heure. C'est ce
@@ -539,6 +544,10 @@ namespace dotnet.core.thegoldenfan.Services
             if (ligne != null && ligne.AnsweredAt.HasValue)
             { throw new BaseException(-5, src, "Tu as déjà répondu à cette question."); }
 
+            // Vrai quand il revient sur une question qu'il avait deja quittee une
+            // fois : sa reprise est derriere lui, le chrono ne repart plus.
+            bool reprise = ligne != null && ligne.Choice == -2;
+
             if (ligne == null)
             {
                 ligne = new Dbs.QuizAnswer
@@ -551,14 +560,33 @@ namespace dotnet.core.thegoldenfan.Services
                 };
                 dbContext.QuizAnswers.Add(ligne);
             }
-            else
+            else if (ligne.Choice == -1)
             {
-                // Il avait ouvert la question sans repondre : on repart du present.
-                // Sans cela, une question affichee puis abandonnee serait perdue.
+                // Il avait ouvert la question sans repondre : on lui redonne
+                // quinze secondes pleines, une seule fois. C'est la part laissee a
+                // l'accident — un appel, une application fermee, un reseau coupe.
+                // Le -2 marque cette reprise : tant que le joueur n'a pas repondu,
+                // Choice ne sert a rien d'autre (il vaut -1 a la naissance de la
+                // ligne, et QuizReponseAsync l'ecrase avec le vrai choix). Personne
+                // d'autre ne lit Choice avant la reponse : la console et le detail
+                // du joueur ne regardent que les lignes repondues.
+                ligne.Choice = -2;
                 ligne.StartedAt = DateTime.UtcNow;
             }
+            // Choice == -2 : il est deja revenu une fois. Le chrono garde son
+            // depart d'origine, et le temps continue de courir pendant qu'il
+            // cherche ailleurs. Celui qui quitte une seconde fois perd sa question.
 
             await dbContext.SaveChangesAsync();
+
+            // Le temps annonce au joueur est celui qui lui reste vraiment. Sans
+            // cela, le revenant verrait quinze secondes a l'ecran et serait juge
+            // sur une horloge partie bien plus tot : un piege silencieux.
+            // Au minimum une seconde, pour qu'il ait le temps de lire le verdict
+            // plutot que de voir la question se fermer sous ses yeux.
+            int resteMs = (QUIZ_SECONDES * 1000)
+                        - (int)Math.Max(0, (DateTime.UtcNow - ligne.StartedAt).TotalMilliseconds);
+            int secondes = Math.Max(1, Math.Min(QUIZ_SECONDES, (int)Math.Ceiling(resteMs / 1000.0)));
 
             return new QuizDepartResult
             {
@@ -567,7 +595,8 @@ namespace dotnet.core.thegoldenfan.Services
                 Points = q.Points,
                 Texte = q.Texte,
                 Choix = q.Choix.ToList(),
-                Secondes = QUIZ_SECONDES
+                Secondes = secondes,
+                Reprise = reprise
             };
         }
 
