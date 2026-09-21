@@ -106,6 +106,49 @@ namespace dotnet.core.thegoldenfan.controllers
             return res;
         }
 
+        // L'annonce « YouProno devient The Golden Fan ». Usage prive du fondateur,
+        // depuis Swagger, en POST : aucune visite d'adresse ne peut la declencher.
+        // Test : un seul destinataire, choisi par son pseudo, rien n'est note.
+        [HttpPost("Announce/Test/{accessCode}/{displayName}")]
+        public async Task<ResponseModel<UserService.AnnounceResult>> AnnounceTestAsync(string accessCode, string displayName)
+        {
+            ResponseModel<UserService.AnnounceResult> res = ResponseModel<UserService.AnnounceResult>.CreateDefault();
+            try
+            {
+                if (!string.Equals(accessCode, "psg2026", StringComparison.Ordinal))
+                { return ResponseModel<UserService.AnnounceResult>.CreateDefault(); }
+
+                var result = await service.AnnounceTestAsync(displayName);
+                res = new ResponseModel<UserService.AnnounceResult>(0, result);
+            }
+            catch (Exception ex)
+            {
+                res = ResponseModel<UserService.AnnounceResult>.Exception(ex);
+            }
+            return res;
+        }
+
+        // Envoi a tous ceux qui ne l'ont pas encore recu. La relancer ne reprend
+        // que les oublies et les echecs : personne ne le recoit deux fois.
+        [HttpPost("Announce/All/{accessCode}")]
+        public async Task<ResponseModel<UserService.AnnounceResult>> AnnounceAllAsync(string accessCode)
+        {
+            ResponseModel<UserService.AnnounceResult> res = ResponseModel<UserService.AnnounceResult>.CreateDefault();
+            try
+            {
+                if (!string.Equals(accessCode, "psg2026", StringComparison.Ordinal))
+                { return ResponseModel<UserService.AnnounceResult>.CreateDefault(); }
+
+                var result = await service.AnnounceAllAsync();
+                res = new ResponseModel<UserService.AnnounceResult>(0, result);
+            }
+            catch (Exception ex)
+            {
+                res = ResponseModel<UserService.AnnounceResult>.Exception(ex);
+            }
+            return res;
+        }
+
         // Le rappel du matin d'un jour de match. Appelee par UptimeRobot a 8 h.
         // Ne fait rien si le PSG ne joue pas aujourd'hui.
         [HttpGet("Reminder/{accessCode}/{teamId}")]
