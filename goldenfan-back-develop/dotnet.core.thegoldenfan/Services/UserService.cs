@@ -487,6 +487,12 @@ namespace dotnet.core.thegoldenfan.Services
               + "le jeu sur l'&eacute;cran d'accueil de ton t&eacute;l&eacute;phone, supprime l'ancienne "
               + "ic&ocirc;ne et r&eacute;installe-le depuis la nouvelle adresse.</p>"
 
+              + PARA + "Une seule chose a pu bouger : le mot de passe que ton navigateur avait retenu "
+              + "&eacute;tait enregistr&eacute; pour l'ancienne adresse, il ne te sera plus propos&eacute; "
+              + "automatiquement. Si tu l'as oubli&eacute;, clique sur &laquo;&nbsp;Mot de passe ou pseudo "
+              + "oubli&eacute;&nbsp;?&nbsp;&raquo; sous le bouton de connexion : tu re&ccedil;ois tout par "
+              + "courriel dans la minute.</p>"
+
               + "<p style=\"font-family:" + POLICE + ";font-size:17px;line-height:1.6;"
               + "color:" + C_OR + ";margin:24px 0 12px;font-weight:bold;\">Pendant la tr&ecirc;ve, "
               + "nous allons tester ta culture club.</p>"
@@ -523,6 +529,10 @@ namespace dotnet.core.thegoldenfan.Services
               + "Pour toi, rien ne change : ton pseudo, ton mot de passe, tes groupes et ta place au "
               + "classement t'attendent sur thegoldenfan.fr. Si tu avais mis le jeu sur l'ecran d'accueil "
               + "de ton telephone, supprime l'ancienne icone et reinstalle-le depuis la nouvelle adresse.\n\n"
+              + "Une seule chose a pu bouger : le mot de passe que ton navigateur avait retenu etait "
+              + "enregistre pour l'ancienne adresse, il ne te sera plus propose automatiquement. Si tu l'as "
+              + "oublie, clique sur \" Mot de passe ou pseudo oublie ? \" sous le bouton de connexion : tu "
+              + "recois tout par courriel dans la minute.\n\n"
               + "Pendant la treve, nous allons tester ta culture club.\n\n"
               + "A partir du mercredi 23 septembre et jusqu'au vendredi 2 octobre, trois nouvelles "
               + "questions sur l'histoire du PSG t'attendent chaque jour :\n"
