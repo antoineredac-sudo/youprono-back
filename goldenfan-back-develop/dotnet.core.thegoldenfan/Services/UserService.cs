@@ -526,7 +526,10 @@ namespace dotnet.core.thegoldenfan.Services
               + "color:#c2cae8;margin:24px 0 0;border-top:1px solid " + C_BORD + ";padding-top:16px;\">"
               + "P.-S. &mdash; Si tu avais mis le jeu sur l'&eacute;cran d'accueil de ton "
               + "t&eacute;l&eacute;phone, supprime l'ancienne ic&ocirc;ne et r&eacute;installe-le "
-              + "depuis la nouvelle adresse.</p>";
+              + "depuis la nouvelle adresse.<br><br>"
+              + "&Agrave; partir du mois d'octobre, mes messages partiront de "
+              + "<span style=\"color:" + C_OR + ";\">contact@thegoldenfan.fr</span>. Ajoute cette "
+              + "adresse &agrave; tes contacts pour &ecirc;tre s&ucirc;r de les recevoir.</p>";
 
             string corps = CadreHtml("Le jeu des experts du PSG", contenu, lienStop);
 
@@ -550,6 +553,8 @@ namespace dotnet.core.thegoldenfan.Services
               + "Antoine\n\n"
               + "P.-S. - Si tu avais mis le jeu sur l'ecran d'accueil de ton telephone, supprime "
               + "l'ancienne icone et reinstalle-le depuis la nouvelle adresse.\n\n"
+              + "A partir du mois d'octobre, mes messages partiront de contact@thegoldenfan.fr. "
+              + "Ajoute cette adresse a tes contacts pour etre sur de les recevoir.\n\n"
               + "---\n"
               + "Ne plus recevoir de rappel avant match : " + lienStop;
 
