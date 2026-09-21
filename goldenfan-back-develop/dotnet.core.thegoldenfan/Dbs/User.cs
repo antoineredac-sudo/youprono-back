@@ -44,6 +44,10 @@ public partial class User
     // Le dernier match pour lequel le courriel de resultat est parti.
     public string? LastResultMatchId { get; set; }
 
+    // Date d'envoi du courriel « YouProno devient The Golden Fan ». Vide tant
+    // qu'il n'est pas parti : empeche qu'un joueur le recoive deux fois.
+    public DateTime? AnnounceSentAt { get; set; }
+
     public virtual ICollection<Follower> FollowerFollowerNavigations { get; } = new List<Follower>();
 
     public virtual ICollection<Follower> FollowerUsers { get; } = new List<Follower>();

@@ -455,6 +455,7 @@ public partial class AppDbContext : DbContext
             entity.Property(e => e.WelcomeTries);
             entity.Property(e => e.LastReminderMatchId).HasMaxLength(64);
             entity.Property(e => e.LastResultMatchId).HasMaxLength(64);
+            entity.Property(e => e.AnnounceSentAt);
         });
 
         modelBuilder.Entity<UserMatch>(entity =>
