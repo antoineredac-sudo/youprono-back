@@ -62,6 +62,10 @@ using (var scope = app.Services.CreateScope())
         db.Database.ExecuteSqlRaw(
             "ALTER TABLE \"User\" ADD COLUMN IF NOT EXISTS \"LastResultMatchId\" character varying(64);");
 
+        // Date d'envoi du courriel « YouProno devient The Golden Fan ».
+        db.Database.ExecuteSqlRaw(
+            "ALTER TABLE \"User\" ADD COLUMN IF NOT EXISTS \"AnnounceSentAt\" timestamp without time zone;");
+
         // Correction ponctuelle : quelques joueurs n'ont qu'un nom d'usage et ont
         // ete enregistres avec le meme prenom et le meme nom — « Marquinhos
         // Marquinhos », « Vitinha Vitinha ». On vide le prenom.
