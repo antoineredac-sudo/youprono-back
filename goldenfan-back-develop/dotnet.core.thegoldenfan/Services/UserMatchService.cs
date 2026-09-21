@@ -397,6 +397,12 @@ namespace dotnet.core.thegoldenfan.Services
         {
             DateTime date;
             if (!DateTime.TryParse(jour, out date)) { return false; }
+
+            // La premiere journee est ouverte des a present : decision d'Antoine le
+            // 21 septembre au soir, pour pouvoir relire ses questions en situation
+            // avant l'annonce. Les journees suivantes s'ouvrent a leur date, a minuit.
+            if (jour.Equals(QUIZ[0].Jour, StringComparison.Ordinal)) { return true; }
+
             return QuizMaintenantParis().Date >= date.Date;
         }
 
@@ -900,6 +906,179 @@ namespace dotnet.core.thegoldenfan.Services
             int butsExterieur = psgRecoit ? top.Key.Adv : top.Key.Psg;
             res.ScoreLePlusPronostique = domicile + " " + butsDomicile + " - " + butsExterieur + " " + exterieur;
             res.PronosSurCeScore = top.Count();
+
+            return res;
+        }
+
+        // ===== LA CONSOLE DU DEFI =====
+        // Une seule lecture, reservee a Antoine par le code d'acces : qui joue,
+        // combien, a quelle heure, sur combien de questions, avec quelles notes.
+        // Rien n'est ecrit : la console regarde, elle ne touche a rien.
+
+        public sealed class QuizConsoleJoueur
+        {
+            public int Rang { get; set; }
+            public string DisplayName { get; set; } = "";
+            public int Points { get; set; }
+            public int TempsMs { get; set; }
+            public int Questions { get; set; }
+            public int Bonnes { get; set; }
+            public string PremiereReponse { get; set; } = "";
+            public string DerniereReponse { get; set; } = "";
+        }
+
+        public sealed class QuizConsoleQuestion
+        {
+            public string Id { get; set; } = "";
+            public string Jour { get; set; } = "";
+            public int Rang { get; set; }
+            public string Difficulte { get; set; } = "";
+            public string Texte { get; set; } = "";
+            public string BonneReponse { get; set; } = "";
+            public bool Ouverte { get; set; }
+            public int Reponses { get; set; }
+            public int Bonnes { get; set; }
+            public int HorsDelai { get; set; }
+            public int TauxReussite { get; set; }
+            public int TempsMoyenMs { get; set; }
+        }
+
+        public sealed class QuizConsoleJour
+        {
+            public string Date { get; set; } = "";
+            public bool Ouvert { get; set; }
+            public int Joueurs { get; set; }
+            public int Reponses { get; set; }
+        }
+
+        public sealed class QuizConsoleHeure
+        {
+            public int Heure { get; set; }
+            public int Reponses { get; set; }
+        }
+
+        public sealed class QuizConsoleResult
+        {
+            public string Maintenant { get; set; } = "";
+            public string Cloture { get; set; } = "";
+            public bool DefiOuvert { get; set; }
+            public int Inscrits { get; set; }
+            public int Joueurs { get; set; }
+            public int Reponses { get; set; }
+            public int ReponsesBonnes { get; set; }
+            public int QuestionsOuvertes { get; set; }
+            public int JoueursAJour { get; set; }
+            public List<QuizConsoleJour> Jours { get; set; } = new();
+            public List<QuizConsoleHeure> Heures { get; set; } = new();
+            public List<QuizConsoleQuestion> Questions { get; set; } = new();
+            public List<QuizConsoleJoueur> Classement { get; set; } = new();
+        }
+
+        public async Task<QuizConsoleResult> QuizConsoleAsync(string accessCode)
+        {
+            string src = "UserMatchService.QuizConsoleAsync";
+            if (string.IsNullOrWhiteSpace(accessCode) ||
+                !accessCode.Trim().Equals(TendanceAccessCode, StringComparison.OrdinalIgnoreCase))
+            { throw BaseException.InvalidModel(-1, src); }
+
+            var reponses = await dbContext.QuizAnswers
+                .Where(w => w.AnsweredAt.HasValue)
+                .ToListAsync();
+
+            var inscrits = await dbContext.Users
+                .Select(s => new { s.Id, s.DisplayName })
+                .ToListAsync();
+
+            var noms = new Dictionary<Guid, string>();
+            foreach (var u in inscrits) { noms[u.Id] = u.DisplayName ?? ""; }
+
+            // Les heures sont celles de Paris : c'est a cette horloge qu'Antoine
+            // decidera d'avancer ou de reculer l'envoi de ses rappels.
+            DateTime EnParis(DateTime utc)
+            {
+                return TimeZoneInfo.ConvertTimeFromUtc(
+                    DateTime.SpecifyKind(utc, DateTimeKind.Utc), GroupService.ParisTimeZoneInfo);
+            }
+
+            var res = new QuizConsoleResult
+            {
+                Maintenant = QuizMaintenantParis().ToString("yyyy-MM-dd HH:mm"),
+                Cloture = QUIZ_CLOTURE_PARIS.ToString("yyyy-MM-ddTHH:mm:ss"),
+                DefiOuvert = QuizOuvert(),
+                Inscrits = inscrits.Count,
+                Reponses = reponses.Count,
+                ReponsesBonnes = reponses.Count(c => c.Correct),
+                Joueurs = reponses.Select(s => s.UserId).Distinct().Count()
+            };
+
+            // Le detail par question, dans l'ordre du calendrier.
+            foreach (var q in QUIZ)
+            {
+                var pour = reponses.Where(w => w.QuestionId.Equals(q.Id)).ToList();
+                bool ouverte = QuizJourOuvert(q.Jour);
+                if (ouverte) { res.QuestionsOuvertes++; }
+
+                int bonnes = pour.Count(c => c.Correct);
+                res.Questions.Add(new QuizConsoleQuestion
+                {
+                    Id = q.Id,
+                    Jour = q.Jour,
+                    Rang = q.Rang,
+                    Difficulte = QuizDifficulte(q.Rang),
+                    Texte = ouverte ? q.Texte : "",
+                    BonneReponse = ouverte ? q.Choix[q.Bonne] : "",
+                    Ouverte = ouverte,
+                    Reponses = pour.Count,
+                    Bonnes = bonnes,
+                    HorsDelai = pour.Count(c => c.Choice < 0),
+                    TauxReussite = pour.Count == 0 ? 0 : (int)Math.Round(100.0 * bonnes / pour.Count),
+                    TempsMoyenMs = pour.Count == 0 ? 0 : (int)Math.Round(pour.Average(a => (double)a.TimeMs))
+                });
+            }
+
+            // Le detail par jour de question.
+            foreach (var jour in QUIZ.Select(s => s.Jour).Distinct().OrderBy(o => o))
+            {
+                var ids = QUIZ.Where(w => w.Jour.Equals(jour)).Select(s => s.Id).ToList();
+                var pour = reponses.Where(w => ids.Contains(w.QuestionId)).ToList();
+                res.Jours.Add(new QuizConsoleJour
+                {
+                    Date = jour,
+                    Ouvert = QuizJourOuvert(jour),
+                    Joueurs = pour.Select(s => s.UserId).Distinct().Count(),
+                    Reponses = pour.Count
+                });
+            }
+
+            // Les vingt-quatre heures de la journee, meme celles a zero : un trou
+            // dans la courbe est une information autant qu'un pic.
+            var parHeure = new int[24];
+            foreach (var r in reponses) { parHeure[EnParis(r.AnsweredAt!.Value).Hour]++; }
+            for (int h = 0; h < 24; h++)
+            { res.Heures.Add(new QuizConsoleHeure { Heure = h, Reponses = parHeure[h] }); }
+
+            // Le classement, dans l'ordre du jeu : les points d'abord, le temps
+            // total pour departager.
+            var parJoueur = reponses
+                .GroupBy(g => g.UserId)
+                .Select(s => new QuizConsoleJoueur
+                {
+                    DisplayName = noms.ContainsKey(s.Key) ? noms[s.Key] : "",
+                    Points = s.Sum(x => x.Points),
+                    TempsMs = s.Sum(x => x.TimeMs),
+                    Questions = s.Count(),
+                    Bonnes = s.Count(c => c.Correct),
+                    PremiereReponse = EnParis(s.Min(m => m.AnsweredAt!.Value)).ToString("dd/MM HH:mm"),
+                    DerniereReponse = EnParis(s.Max(m => m.AnsweredAt!.Value)).ToString("dd/MM HH:mm")
+                })
+                .OrderByDescending(o => o.Points)
+                .ThenBy(o => o.TempsMs)
+                .ToList();
+
+            int rang = 0;
+            foreach (var j in parJoueur) { j.Rang = ++rang; res.Classement.Add(j); }
+
+            res.JoueursAJour = parJoueur.Count(c => c.Questions >= res.QuestionsOuvertes);
 
             return res;
         }
