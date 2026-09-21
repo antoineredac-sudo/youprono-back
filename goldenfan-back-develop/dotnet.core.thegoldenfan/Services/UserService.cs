@@ -511,6 +511,16 @@ namespace dotnet.core.thegoldenfan.Services
               + PARA + "&Agrave; la cl&ocirc;ture, le gagnant sera tir&eacute; au sort parmi les "
               + "5 premiers du classement. &Agrave; la cl&eacute; : " + CADEAU + ".</p>"
 
+              + "<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" "
+              + "style=\"margin:4px 0 22px;\"><tr>"
+              + "<td style=\"background:" + C_BANDE + ";border:1px solid " + C_OR + ";"
+              + "border-radius:12px;padding:18px 16px 14px;text-align:center;\">"
+              + "<img src=\"https://thegoldenfan.fr/maillot-psg.png\" width=\"150\" alt=\"\" "
+              + "style=\"display:block;margin:0 auto 10px;border:0;width:150px;max-width:60%;height:auto;\">"
+              + "<div style=\"font-family:" + POLICE + ";font-size:15px;font-weight:bold;"
+              + "color:" + C_OR + ";\">1 T-shirt du PSG &agrave; gagner</div>"
+              + "</td></tr></table>"
+
               + BoutonHtml("https://thegoldenfan.fr/#culture-club", "Je rel&egrave;ve mon premier d&eacute;fi", false, false)
 
               + PARA + "Prochain rendez-vous sur le terrain : <span style=\"white-space:nowrap;\">"
