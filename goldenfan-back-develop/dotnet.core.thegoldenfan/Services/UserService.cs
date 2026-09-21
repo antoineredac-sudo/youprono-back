@@ -422,6 +422,25 @@ namespace dotnet.core.thegoldenfan.Services
             return result;
         }
 
+        // L'heure a laquelle l'annonce doit partir, heure de Paris. Tant que ce
+        // moment n'est pas atteint, la route automatique ne fait rien : elle peut
+        // donc etre appelee toutes les cinq minutes sans risque des maintenant.
+        private static readonly DateTime ANNONCE_DEPART_PARIS = new DateTime(2026, 9, 23, 8, 0, 0);
+
+        // Appelee en boucle par le service de surveillance, comme le rappel du
+        // matin. Elle refuse avant l'heure, et apres le premier envoi il ne reste
+        // plus personne a servir : AnnounceSentAt fait office de verrou.
+        public async Task<AnnounceResult> AnnounceAutoAsync()
+        {
+            DateTime maintenantParis = TimeZoneInfo.ConvertTimeFromUtc(
+                DateTime.UtcNow, GroupService.ParisTimeZoneInfo);
+
+            if (maintenantParis < ANNONCE_DEPART_PARIS)
+            { return new AnnounceResult(); }
+
+            return await AnnounceAllAsync();
+        }
+
         public async Task<AnnounceResult> AnnounceAllAsync()
         {
             var result = new AnnounceResult();
