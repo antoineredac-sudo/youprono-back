@@ -66,6 +66,25 @@ using (var scope = app.Services.CreateScope())
         db.Database.ExecuteSqlRaw(
             "ALTER TABLE \"User\" ADD COLUMN IF NOT EXISTS \"AnnounceSentAt\" timestamp without time zone;");
 
+        // Le defi culture club de la treve (21 septembre 2026). La table nait au
+        // demarrage, comme les colonnes ci-dessus : aucune migration a jouer a la
+        // main, et un serveur neuf se retrouve complet tout seul.
+        db.Database.ExecuteSqlRaw(
+            "CREATE TABLE IF NOT EXISTS \"QuizAnswer\" (" +
+            "  \"Id\" uuid NOT NULL PRIMARY KEY," +
+            "  \"UserId\" uuid NOT NULL," +
+            "  \"QuestionId\" character varying(32) NOT NULL," +
+            "  \"StartedAt\" timestamp without time zone NOT NULL," +
+            "  \"AnsweredAt\" timestamp without time zone NULL," +
+            "  \"Choice\" integer NOT NULL DEFAULT -1," +
+            "  \"Correct\" boolean NOT NULL DEFAULT false," +
+            "  \"Points\" integer NOT NULL DEFAULT 0," +
+            "  \"TimeMs\" integer NOT NULL DEFAULT 0);");
+
+        db.Database.ExecuteSqlRaw(
+            "CREATE UNIQUE INDEX IF NOT EXISTS \"QuizAnswer_idx_userid_questionid01\" " +
+            "ON \"QuizAnswer\" (\"UserId\", \"QuestionId\");");
+
         // Correction ponctuelle : quelques joueurs n'ont qu'un nom d'usage et ont
         // ete enregistres avec le meme prenom et le meme nom — « Marquinhos
         // Marquinhos », « Vitinha Vitinha ». On vide le prenom.
