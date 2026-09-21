@@ -478,7 +478,7 @@ namespace dotnet.core.thegoldenfan.Services
                 PARA + "Salut " + nom + ",</p>"
 
               + PARA + "Depuis lundi, YouProno s'appelle The Golden Fan. "
-              + "Ce nouveau nom repr&eacute;sente mieux ce que nous cherchons ensemble : "
+              + "Ce nouveau nom repr&eacute;sente mieux notre promesse de "
               + "r&eacute;compenser l'expertise des supporters du PSG.</p>"
 
               + PARA + "Pour toi, rien ne change : ton pseudo, ton mot de passe, tes groupes et ta "
@@ -487,15 +487,18 @@ namespace dotnet.core.thegoldenfan.Services
               + "le jeu sur l'&eacute;cran d'accueil de ton t&eacute;l&eacute;phone, supprime l'ancienne "
               + "ic&ocirc;ne et r&eacute;installe-le depuis la nouvelle adresse.</p>"
 
-              + PARA + "Une seule chose a pu bouger : le mot de passe que ton navigateur avait retenu "
-              + "&eacute;tait enregistr&eacute; pour l'ancienne adresse, il ne te sera plus propos&eacute; "
-              + "automatiquement. Si tu l'as oubli&eacute;, clique sur &laquo;&nbsp;Mot de passe ou pseudo "
-              + "oubli&eacute;&nbsp;?&nbsp;&raquo; sous le bouton de connexion : tu re&ccedil;ois tout par "
-              + "courriel dans la minute.</p>"
-
               + "<p style=\"font-family:" + POLICE + ";font-size:17px;line-height:1.6;"
               + "color:" + C_OR + ";margin:24px 0 12px;font-weight:bold;\">Pendant la tr&ecirc;ve, "
               + "nous allons tester ta culture club.</p>"
+              + "<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" "
+              + "style=\"margin:4px 0 22px;\"><tr>"
+              + "<td style=\"background:" + C_BANDE + ";border:1px solid " + C_OR + ";"
+              + "border-radius:12px;padding:18px 16px 14px;text-align:center;\">"
+              + "<img src=\"https://thegoldenfan.fr/maillot-psg.png\" width=\"150\" alt=\"\" "
+              + "style=\"display:block;margin:0 auto 10px;border:0;width:150px;max-width:60%;height:auto;\">"
+              + "<div style=\"font-family:" + POLICE + ";font-size:15px;font-weight:bold;"
+              + "color:" + C_OR + ";\">1 T-shirt du PSG &agrave; gagner</div>"
+              + "</td></tr></table>"
 
               + PARA + "D&egrave;s aujourd'hui et jusqu'au vendredi 2 octobre, "
               + "trois nouvelles questions sur l'histoire du PSG t'attendent chaque jour :</p>"
@@ -509,17 +512,8 @@ namespace dotnet.core.thegoldenfan.Services
               + "dimanche 4 octobre &agrave; 18 h.</p>"
 
               + PARA + "&Agrave; la cl&ocirc;ture, le gagnant sera tir&eacute; au sort parmi les "
-              + "5 premiers du classement. &Agrave; la cl&eacute; : " + CADEAU + ".</p>"
+              + "5 premiers du classement.</p>"
 
-              + "<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" "
-              + "style=\"margin:4px 0 22px;\"><tr>"
-              + "<td style=\"background:" + C_BANDE + ";border:1px solid " + C_OR + ";"
-              + "border-radius:12px;padding:18px 16px 14px;text-align:center;\">"
-              + "<img src=\"https://thegoldenfan.fr/maillot-psg.png\" width=\"150\" alt=\"\" "
-              + "style=\"display:block;margin:0 auto 10px;border:0;width:150px;max-width:60%;height:auto;\">"
-              + "<div style=\"font-family:" + POLICE + ";font-size:15px;font-weight:bold;"
-              + "color:" + C_OR + ";\">1 T-shirt du PSG &agrave; gagner</div>"
-              + "</td></tr></table>"
 
               + BoutonHtml("https://thegoldenfan.fr/#culture-club", "Je rel&egrave;ve mon premier d&eacute;fi", false, false)
 
@@ -535,14 +529,10 @@ namespace dotnet.core.thegoldenfan.Services
             string texteBrut =
                 "Salut " + pseudo + ",\n\n"
               + "Depuis lundi, YouProno s'appelle The Golden Fan. Ce nouveau nom represente "
-              + "mieux ce que nous cherchons ensemble : recompenser l'expertise des supporters du PSG.\n\n"
+              + "mieux notre promesse de recompenser l'expertise des supporters du PSG.\n\n"
               + "Pour toi, rien ne change : ton pseudo, ton mot de passe, tes groupes et ta place au "
               + "classement t'attendent sur thegoldenfan.fr. Si tu avais mis le jeu sur l'ecran d'accueil "
               + "de ton telephone, supprime l'ancienne icone et reinstalle-le depuis la nouvelle adresse.\n\n"
-              + "Une seule chose a pu bouger : le mot de passe que ton navigateur avait retenu etait "
-              + "enregistre pour l'ancienne adresse, il ne te sera plus propose automatiquement. Si tu l'as "
-              + "oublie, clique sur \" Mot de passe ou pseudo oublie ? \" sous le bouton de connexion : tu "
-              + "recois tout par courriel dans la minute.\n\n"
               + "Pendant la treve, nous allons tester ta culture club.\n\n"
               + "Des aujourd'hui et jusqu'au vendredi 2 octobre, trois nouvelles "
               + "questions sur l'histoire du PSG t'attendent chaque jour :\n"
@@ -550,8 +540,7 @@ namespace dotnet.core.thegoldenfan.Services
               + "- 4 reponses au choix et 15 secondes pour repondre ;\n"
               + "- a egalite de points, le plus rapide passe devant.\n\n"
               + "Tu as manque un jour ? Les questions restent jouables jusqu'au dimanche 4 octobre a 18 h.\n\n"
-              + "A la cloture, le gagnant sera tire au sort parmi les 5 premiers du classement. A la cle : "
-              + CADEAU_TEXTE + ".\n\n"
+              + "A la cloture, le gagnant sera tire au sort parmi les 5 premiers du classement.\n\n"
               + "Je releve mon premier defi : https://thegoldenfan.fr/#culture-club\n\n"
               + "Prochain rendez-vous sur le terrain : PSG - Le Mans, le samedi 10 octobre.\n\n"
               + "Allez Paris,\n\n"
