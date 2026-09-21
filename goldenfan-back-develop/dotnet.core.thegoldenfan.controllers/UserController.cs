@@ -1,4 +1,4 @@
-using dotnet.core.utils;
+﻿using dotnet.core.utils;
 using dotnet.core.thegoldenfan.Dbs;
 using dotnet.core.thegoldenfan.Models;
 using dotnet.core.thegoldenfan.Services;
@@ -151,6 +151,29 @@ namespace dotnet.core.thegoldenfan.controllers
 
         // Le rappel du matin d'un jour de match. Appelee par UptimeRobot a 8 h.
         // Ne fait rien si le PSG ne joue pas aujourd'hui.
+        // L'annonce automatique. Appelee en GET par le service de surveillance,
+        // toutes les cinq minutes : elle ne fait rien avant l'heure prevue, et
+        // une fois l'envoi fait, les passages suivants ne trouvent plus personne.
+        [HttpGet("Announce/Auto/{accessCode}")]
+        [HttpHead("Announce/Auto/{accessCode}")]
+        public async Task<ResponseModel<UserService.AnnounceResult>> AnnounceAutoAsync(string accessCode)
+        {
+            ResponseModel<UserService.AnnounceResult> res = ResponseModel<UserService.AnnounceResult>.CreateDefault();
+            try
+            {
+                if (!string.Equals(accessCode, "psg2026", StringComparison.Ordinal))
+                { return ResponseModel<UserService.AnnounceResult>.CreateDefault(); }
+
+                var result = await service.AnnounceAutoAsync();
+                res = new ResponseModel<UserService.AnnounceResult>(0, result);
+            }
+            catch (Exception ex)
+            {
+                res = ResponseModel<UserService.AnnounceResult>.Exception(ex);
+            }
+            return res;
+        }
+
         [HttpGet("Reminder/{accessCode}/{teamId}")]
         [HttpHead("Reminder/{accessCode}/{teamId}")]
         public async Task<ResponseModel<UserService.ReminderResult>> ReminderAsync(string accessCode, string teamId)
