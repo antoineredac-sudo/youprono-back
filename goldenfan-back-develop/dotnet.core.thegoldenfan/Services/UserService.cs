@@ -497,7 +497,7 @@ namespace dotnet.core.thegoldenfan.Services
               + "color:" + C_OR + ";margin:24px 0 12px;font-weight:bold;\">Pendant la tr&ecirc;ve, "
               + "nous allons tester ta culture club.</p>"
 
-              + PARA + "&Agrave; partir du mercredi 23 septembre et jusqu'au vendredi 2 octobre, "
+              + PARA + "D&egrave;s aujourd'hui et jusqu'au vendredi 2 octobre, "
               + "trois nouvelles questions sur l'histoire du PSG t'attendent chaque jour :</p>"
               + "<ul style=\"font-family:" + POLICE + ";font-size:16px;line-height:1.7;color:"
               + C_TEXTE + ";margin:0 0 16px;padding-left:22px;\">"
@@ -508,7 +508,7 @@ namespace dotnet.core.thegoldenfan.Services
               + PARA + "Tu as manqu&eacute; un jour ? Les questions restent jouables jusqu'au "
               + "dimanche 4 octobre &agrave; 18 h.</p>"
 
-              + PARA + "&Agrave; la cl&ocirc;ture, le vainqueur sera tir&eacute; au sort parmi les "
+              + PARA + "&Agrave; la cl&ocirc;ture, le gagnant sera tir&eacute; au sort parmi les "
               + "5 premiers du classement. &Agrave; la cl&eacute; : " + CADEAU + ".</p>"
 
               + BoutonHtml("https://thegoldenfan.fr/#culture-club", "Je rel&egrave;ve mon premier d&eacute;fi", false, false)
@@ -517,7 +517,7 @@ namespace dotnet.core.thegoldenfan.Services
               + "PSG &ndash; Le Mans</span>, le samedi 10 octobre.</p>"
 
               + "<p style=\"font-family:" + POLICE + ";font-size:16px;line-height:1.7;"
-              + "color:" + C_TEXTE + ";margin:22px 0 0;\">Je te souhaite de relever le d&eacute;fi.<br>"
+              + "color:" + C_TEXTE + ";margin:22px 0 0;\">"
               + "Allez Paris,<br><br>Antoine</p>";
 
             string corps = CadreHtml("Le jeu des experts du PSG", contenu, lienStop);
@@ -534,17 +534,17 @@ namespace dotnet.core.thegoldenfan.Services
               + "oublie, clique sur \" Mot de passe ou pseudo oublie ? \" sous le bouton de connexion : tu "
               + "recois tout par courriel dans la minute.\n\n"
               + "Pendant la treve, nous allons tester ta culture club.\n\n"
-              + "A partir du mercredi 23 septembre et jusqu'au vendredi 2 octobre, trois nouvelles "
+              + "Des aujourd'hui et jusqu'au vendredi 2 octobre, trois nouvelles "
               + "questions sur l'histoire du PSG t'attendent chaque jour :\n"
               + "- une facile a 1 point, une moyenne a 2 points, une difficile a 3 points ;\n"
               + "- 4 reponses au choix et 15 secondes pour repondre ;\n"
               + "- a egalite de points, le plus rapide passe devant.\n\n"
               + "Tu as manque un jour ? Les questions restent jouables jusqu'au dimanche 4 octobre a 18 h.\n\n"
-              + "A la cloture, le vainqueur sera tire au sort parmi les 5 premiers du classement. A la cle : "
+              + "A la cloture, le gagnant sera tire au sort parmi les 5 premiers du classement. A la cle : "
               + CADEAU_TEXTE + ".\n\n"
               + "Je releve mon premier defi : https://thegoldenfan.fr/#culture-club\n\n"
               + "Prochain rendez-vous sur le terrain : PSG - Le Mans, le samedi 10 octobre.\n\n"
-              + "Je te souhaite de relever le defi.\nAllez Paris,\n\n"
+              + "Allez Paris,\n\n"
               + "Antoine\n\n"
               + "---\n"
               + "Ne plus recevoir de rappel avant match : " + lienStop;
@@ -554,7 +554,7 @@ namespace dotnet.core.thegoldenfan.Services
                 sender = new { name = "The Golden Fan", email = expediteur },
                 to = new[] { new { email = adresse } },
                 replyTo = new { email = expediteur, name = "The Golden Fan" },
-                subject = "YouProno devient The Golden Fan",
+                subject = "Un T-shirt du PSG à gagner pendant la trêve",
                 htmlContent = corps,
                 textContent = texteBrut,
                 headers = new Dictionary<string, string>
