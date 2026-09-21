@@ -407,8 +407,8 @@ namespace dotnet.core.thegoldenfan.Services
 
         // Le cadeau du defi culture club, nomme dans le courriel d'annonce.
         // A REMPLIR avant le depot : le libelle HTML et sa version texte brut.
-        private const string CADEAU = "[le cadeau]";
-        private const string CADEAU_TEXTE = "[le cadeau]";
+        private const string CADEAU = "un T-shirt du PSG";
+        private const string CADEAU_TEXTE = "un T-shirt du PSG";
 
         public async Task<AnnounceResult> AnnounceTestAsync(string displayName)
         {
@@ -477,7 +477,7 @@ namespace dotnet.core.thegoldenfan.Services
             string contenu =
                 PARA + "Salut " + nom + ",</p>"
 
-              + PARA + "&Agrave; partir d'aujourd'hui, YouProno s'appelle The Golden Fan. "
+              + PARA + "Depuis lundi, YouProno s'appelle The Golden Fan. "
               + "Ce nouveau nom repr&eacute;sente mieux ce que nous cherchons ensemble : "
               + "r&eacute;compenser l'expertise des supporters du PSG.</p>"
 
@@ -491,8 +491,8 @@ namespace dotnet.core.thegoldenfan.Services
               + "color:" + C_OR + ";margin:24px 0 12px;font-weight:bold;\">Pendant la tr&ecirc;ve, "
               + "nous allons tester ta culture club.</p>"
 
-              + PARA + "Jusqu'au 2 octobre, trois nouvelles questions sur l'histoire du PSG "
-              + "t'attendent chaque jour :</p>"
+              + PARA + "&Agrave; partir du mercredi 23 septembre et jusqu'au vendredi 2 octobre, "
+              + "trois nouvelles questions sur l'histoire du PSG t'attendent chaque jour :</p>"
               + "<ul style=\"font-family:" + POLICE + ";font-size:16px;line-height:1.7;color:"
               + C_TEXTE + ";margin:0 0 16px;padding-left:22px;\">"
               + "<li>une facile &agrave; 1 point, une moyenne &agrave; 2 points, une difficile &agrave; 3 points ;</li>"
@@ -518,13 +518,14 @@ namespace dotnet.core.thegoldenfan.Services
 
             string texteBrut =
                 "Salut " + pseudo + ",\n\n"
-              + "A partir d'aujourd'hui, YouProno s'appelle The Golden Fan. Ce nouveau nom represente "
+              + "Depuis lundi, YouProno s'appelle The Golden Fan. Ce nouveau nom represente "
               + "mieux ce que nous cherchons ensemble : recompenser l'expertise des supporters du PSG.\n\n"
               + "Pour toi, rien ne change : ton pseudo, ton mot de passe, tes groupes et ta place au "
               + "classement t'attendent sur thegoldenfan.fr. Si tu avais mis le jeu sur l'ecran d'accueil "
               + "de ton telephone, supprime l'ancienne icone et reinstalle-le depuis la nouvelle adresse.\n\n"
               + "Pendant la treve, nous allons tester ta culture club.\n\n"
-              + "Jusqu'au 2 octobre, trois nouvelles questions sur l'histoire du PSG t'attendent chaque jour :\n"
+              + "A partir du mercredi 23 septembre et jusqu'au vendredi 2 octobre, trois nouvelles "
+              + "questions sur l'histoire du PSG t'attendent chaque jour :\n"
               + "- une facile a 1 point, une moyenne a 2 points, une difficile a 3 points ;\n"
               + "- 4 reponses au choix et 15 secondes pour repondre ;\n"
               + "- a egalite de points, le plus rapide passe devant.\n\n"
