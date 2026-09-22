@@ -523,7 +523,7 @@ namespace dotnet.core.thegoldenfan.Services
               + "<ul style=\"font-family:" + POLICE + ";font-size:16px;line-height:1.7;color:"
               + C_TEXTE + ";margin:0 0 16px;padding-left:22px;\">"
               + "<li>une facile &agrave; 1 point, une moyenne &agrave; 2 points, une difficile &agrave; 3 points ;</li>"
-              + "<li>4 r&eacute;ponses au choix et 15 secondes pour r&eacute;pondre ;</li>"
+              + "<li>4 r&eacute;ponses au choix et 20 secondes pour r&eacute;pondre ;</li>"
               + "<li>&agrave; &eacute;galit&eacute; de points, le plus rapide passe devant.</li></ul>"
 
               + PARA + "Tu as manqu&eacute; un jour ? Les questions restent jouables jusqu'au "
@@ -562,7 +562,7 @@ namespace dotnet.core.thegoldenfan.Services
               + "Des aujourd'hui et jusqu'au vendredi 2 octobre, trois nouvelles "
               + "questions sur l'histoire du PSG t'attendent chaque jour :\n"
               + "- une facile a 1 point, une moyenne a 2 points, une difficile a 3 points ;\n"
-              + "- 4 reponses au choix et 15 secondes pour repondre ;\n"
+              + "- 4 reponses au choix et 20 secondes pour repondre ;\n"
               + "- a egalite de points, le plus rapide passe devant.\n\n"
               + "Tu as manque un jour ? Les questions restent jouables jusqu'au dimanche 4 octobre a 18 h.\n\n"
               + "A la cloture, le gagnant sera tire au sort parmi les 5 premiers du classement.\n\n"
