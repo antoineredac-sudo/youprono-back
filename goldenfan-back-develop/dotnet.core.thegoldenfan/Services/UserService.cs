@@ -246,7 +246,8 @@ namespace dotnet.core.thegoldenfan.Services
             // Tous ceux qui n'ont jamais recu le message. Un inscrit de la nuit
             // ou d'un jour ou la route n'a pas ete appelee n'est pas oublie.
             var nouveaux = await dbContext.Users
-                .Where(w => w.WelcomeSentAt == null && w.Email != null && w.Email != ""
+                .Where(w => w.WelcomeSentAt == null && w.EmailOptIn
+                         && w.Email != null && w.Email != ""
                          && w.WelcomeTries < BIENVENUE_ESSAIS_MAX)
                 .ToListAsync();
 
@@ -280,7 +281,8 @@ namespace dotnet.core.thegoldenfan.Services
             // Ceux qui n'ont pas d'adresse sont marques aussi, pour ne pas etre
             // repasses en revue chaque soir jusqu'a la fin des temps.
             var sansAdresse = await dbContext.Users
-                .Where(w => w.WelcomeSentAt == null && (w.Email == null || w.Email == ""))
+                .Where(w => w.WelcomeSentAt == null
+                         && (!w.EmailOptIn || w.Email == null || w.Email == ""))
                 .ToListAsync();
             foreach (var user in sansAdresse) { user.WelcomeSentAt = DateTime.UtcNow; }
             result.SansAdresse = sansAdresse.Count;
@@ -399,6 +401,7 @@ namespace dotnet.core.thegoldenfan.Services
             public int Echecs { get; set; }
             public int DejaRecus { get; set; }
             public int SansAdresse { get; set; }
+            public int Desabonnes { get; set; }
             public List<string> Pseudos { get; set; } = new();
             public List<string> PseudosEnEchec { get; set; } = new();
         }
@@ -453,8 +456,16 @@ namespace dotnet.core.thegoldenfan.Services
                 result.DejaRecus = await dbContext.Users.CountAsync(w => w.AnnounceSentAt != null);
                 result.SansAdresse = await dbContext.Users.CountAsync(w => w.Email == null || w.Email == "");
 
+                // Celui qui s'est desabonne ne recoit rien, meme une annonce qu'on
+                // juge importante : c'est la promesse du lien de desinscription, et
+                // c'est ce qui protege la reputation du domaine. Le rappel et le
+                // courriel de resultat l'appliquaient deja ; l'annonce l'ignorait.
+                result.Desabonnes = await dbContext.Users.CountAsync(
+                    w => !w.EmailOptIn && w.Email != null && w.Email != "");
+
                 var destinataires = await dbContext.Users
-                    .Where(w => w.AnnounceSentAt == null && w.Email != null && w.Email != "")
+                    .Where(w => w.AnnounceSentAt == null && w.EmailOptIn
+                             && w.Email != null && w.Email != "")
                     .ToListAsync();
 
                 foreach (var user in destinataires)
@@ -1152,6 +1163,58 @@ namespace dotnet.core.thegoldenfan.Services
             user.EmailOptIn = false;
             await dbContext.SaveChangesAsync();
             return true;
+        }
+
+        // ===== REMETTRE L'ABONNEMENT (administration) =====
+        // Le desabonnement se fait compte par compte, depuis le lien du pied de
+        // page, et le jeu n'offre aucun chemin de retour. Quand plusieurs comptes
+        // partagent une adresse, un clic n'en coupe qu'un seul : les autres
+        // continuent de recevoir, ce qui rend la situation illisible de
+        // l'exterieur. Cette route retablit l'abonnement de TOUS les comptes qui
+        // portent l'adresse, apres la meme normalisation qu'a l'inscription.
+        // Elle ne cree rien, ne supprime rien, et ne touche qu'a ce drapeau.
+        public class ResubscribeResult
+        {
+            public string Adresse { get; set; } = "";
+            public int Comptes { get; set; }
+            public int Reabonnes { get; set; }
+            public int DejaAbonnes { get; set; }
+            public List<string> Pseudos { get; set; } = new();
+        }
+
+        public async Task<ResubscribeResult> ResubscribeAsync(string accessCode, string adresse)
+        {
+            string src = "UserService.ResubscribeAsync";
+            if (StringHelper.IsNull(accessCode) ||
+                !accessCode.Trim().Equals(AllUsersAccessCode, StringComparison.OrdinalIgnoreCase))
+            { throw BaseException.InvalidModel(-1, src); }
+
+            if (StringHelper.IsNull(adresse) || !adresse.Contains('@'))
+            { throw new BaseException(-2, src, "Adresse manquante ou invalide. Rien n'a ete modifie."); }
+
+            string cible = NormaliserAdresse(adresse);
+
+            // La normalisation se fait en memoire, comme partout ailleurs : la base
+            // ne sait pas comparer « jean.dupont@ » et « jeandupont@ ».
+            var avecAdresse = await dbContext.Users
+                .Where(w => w.Email != null && w.Email != "")
+                .ToListAsync();
+            var comptes = avecAdresse.Where(w => NormaliserAdresse(w.Email!) == cible).ToList();
+
+            if (comptes.Count == 0)
+            { throw new BaseException(-3, src, "Aucun compte ne porte cette adresse. Rien n'a ete modifie."); }
+
+            var res = new ResubscribeResult { Adresse = adresse.Trim(), Comptes = comptes.Count };
+            foreach (var u in comptes)
+            {
+                if (u.EmailOptIn) { res.DejaAbonnes++; continue; }
+                u.EmailOptIn = true;
+                res.Reabonnes++;
+                res.Pseudos.Add(u.DisplayName ?? "");
+            }
+
+            if (res.Reabonnes > 0) { await dbContext.SaveChangesAsync(); }
+            return res;
         }
 
         // ===== LE COURRIEL DU LENDEMAIN DE MATCH =====
@@ -2102,7 +2165,11 @@ namespace dotnet.core.thegoldenfan.Services
             // indisponible, coupure reseau, quota du jour atteint — WelcomeSentAt
             // reste vide et le rattrapage appele par UptimeRobot reprendra ce
             // joueur au passage suivant, puis au suivant, jusqu'a ce que ca passe.
-            await BienvenueImmediateAsync(newObj.Id, newObj.DisplayName ?? "", newObj.Email!);
+            // Celui qui decoche la case a l'inscription ne recoit pas la
+            // bienvenue : elle porte l'affiche du prochain match et un bouton,
+            // c'est un message de jeu, pas un accuse de reception.
+            if (newObj.EmailOptIn)
+            { await BienvenueImmediateAsync(newObj.Id, newObj.DisplayName ?? "", newObj.Email!); }
 
             return TokenHelper.GenerateToken(newObj.Id.ToString(), newObj.DisplayName, GetRole(normalized));
         }
