@@ -128,6 +128,30 @@ namespace dotnet.core.thegoldenfan.controllers
             return res;
         }
 
+        // L'essai de delivrabilite de la future adresse. On envoie le meme courriel
+        // d'annonce, mot pour mot, DEPUIS contact@thegoldenfan.fr, a l'adresse
+        // jetable de mail-tester.com. MAIL_FROM n'est pas touche : tous les autres
+        // courriels continuent de partir de contact@youprono.fr pendant l'essai.
+        // Rien n'est inscrit en base, aucun inscrit n'est concerne.
+        [HttpPost("Announce/MailTester/{accessCode}/{adresse}")]
+        public async Task<ResponseModel<UserService.AnnounceResult>> AnnounceMailTesterAsync(string accessCode, string adresse)
+        {
+            ResponseModel<UserService.AnnounceResult> res = ResponseModel<UserService.AnnounceResult>.CreateDefault();
+            try
+            {
+                if (!string.Equals(accessCode, "psg2026", StringComparison.Ordinal))
+                { return ResponseModel<UserService.AnnounceResult>.CreateDefault(); }
+
+                var result = await service.AnnounceMailTesterAsync(adresse);
+                res = new ResponseModel<UserService.AnnounceResult>(0, result);
+            }
+            catch (Exception ex)
+            {
+                res = ResponseModel<UserService.AnnounceResult>.Exception(ex);
+            }
+            return res;
+        }
+
         // Envoi a tous ceux qui ne l'ont pas encore recu. La relancer ne reprend
         // que les oublies et les echecs : personne ne le recoit deux fois.
         [HttpPost("Announce/All/{accessCode}")]
