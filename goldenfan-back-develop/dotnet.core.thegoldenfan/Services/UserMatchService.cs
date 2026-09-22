@@ -310,7 +310,7 @@ namespace dotnet.core.thegoldenfan.Services
         // l'ecart entre l'affichage de la question et la reponse qui compte, pas
         // ce que raconte le telephone.
 
-        private const int QUIZ_SECONDES = 15;
+        private const int QUIZ_SECONDES = 20;
         // Une seconde et demie de tolerance : le temps que la reponse traverse le
         // reseau. Sans elle, un joueur qui repond a la quatorzieme seconde sur une
         // connexion lente perdrait ses points sans comprendre pourquoi.
