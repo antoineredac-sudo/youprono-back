@@ -483,13 +483,38 @@ namespace dotnet.core.thegoldenfan.Services
             return result;
         }
 
+        // Envoie le courriel d'annonce, tel quel, a une adresse quelconque et
+        // DEPUIS contact@thegoldenfan.fr, sans toucher a MAIL_FROM.
+        // C'est l'essai de delivrabilite de la future adresse : on colle l'adresse
+        // jetable fournie par mail-tester.com, on envoie, on lit la note.
+        // Aucune date n'est inscrite en base, aucun inscrit n'est concerne : cette
+        // route ne sert qu'a eprouver le domaine avant la bascule du 11 octobre.
+        public async Task<AnnounceResult> AnnounceMailTesterAsync(string adresse)
+        {
+            var result = new AnnounceResult();
+            if (string.IsNullOrWhiteSpace(adresse) || !adresse.Contains('@'))
+            { result.SansAdresse = 1; return result; }
+
+            bool ok = await EnvoyerAnnonceAsync(adresse, "Antoine", Guid.Empty,
+                                                "contact@thegoldenfan.fr");
+            if (ok) { result.Envoyes = 1; result.Pseudos.Add(adresse); }
+            else { result.Echecs = 1; result.PseudosEnEchec.Add(adresse); }
+            return result;
+        }
+
         // Renvoie true seulement si Brevo a accepte le message.
-        private static async Task<bool> EnvoyerAnnonceAsync(string adresse, string pseudo, Guid userId)
+        // expediteurForce : laisse vide, l'expediteur vient de MAIL_FROM comme
+        // partout ailleurs. Renseigne, il passe devant — uniquement pour l'essai
+        // de delivrabilite ci-dessus.
+        private static async Task<bool> EnvoyerAnnonceAsync(string adresse, string pseudo, Guid userId,
+                                                            string expediteurForce = "")
         {
             string cle = Environment.GetEnvironmentVariable("BREVO_API_KEY") ?? "";
             if (string.IsNullOrWhiteSpace(cle)) { return false; }
 
-            string expediteur = Environment.GetEnvironmentVariable("MAIL_FROM") ?? "contact@thegoldenfan.fr";
+            string expediteur = !string.IsNullOrWhiteSpace(expediteurForce)
+                ? expediteurForce
+                : (Environment.GetEnvironmentVariable("MAIL_FROM") ?? "contact@thegoldenfan.fr");
             string lienStop = "https://thegoldenfan.fr/#stop/" + userId.ToString();
             string nom = System.Net.WebUtility.HtmlEncode(pseudo);
 
