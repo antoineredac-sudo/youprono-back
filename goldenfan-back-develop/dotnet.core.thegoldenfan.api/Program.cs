@@ -85,6 +85,24 @@ using (var scope = app.Services.CreateScope())
             "CREATE UNIQUE INDEX IF NOT EXISTS \"QuizAnswer_idx_userid_questionid01\" " +
             "ON \"QuizAnswer\" (\"UserId\", \"QuestionId\");");
 
+        // Correction ponctuelle du 22 septembre 2026, 13 h 30.
+        // Le defi a gagne une journee, celle du 22 septembre, qui reprend les trois
+        // questions d'origine. Les joueurs qui y avaient deja repondu les avaient
+        // enregistrees sous les identifiants du 23, du temps ou la premiere journee
+        // etait ouverte en avance. On deplace leurs reponses vers le 22 : elles
+        // suivent la question a laquelle ils ont reellement repondu, et le 23 leur
+        // reste entier.
+        // La condition sur StartedAt protege ceux qui jouent depuis 13 h 07, heure
+        // a laquelle les nouvelles questions ont pris la place des anciennes sous
+        // les identifiants du 23 : leurs reponses-la ne bougent pas.
+        // L'instruction ne trouve plus rien une fois passee : elle peut tourner a
+        // chaque demarrage sans risque.
+        int quizDeplaces = db.Database.ExecuteSqlRaw(
+            "UPDATE \"QuizAnswer\" SET \"QuestionId\" = 'q20260922-' || right(\"QuestionId\", 1) " +
+            "WHERE \"QuestionId\" LIKE 'q20260923-%' " +
+            "AND \"StartedAt\" < TIMESTAMP '2026-09-22 11:05:00';");
+        Console.WriteLine("[quiz] reponses deplacees du 23 vers le 22 : " + quizDeplaces);
+
         // Correction ponctuelle : quelques joueurs n'ont qu'un nom d'usage et ont
         // ete enregistres avec le meme prenom et le meme nom — « Marquinhos
         // Marquinhos », « Vitinha Vitinha ». On vide le prenom.
