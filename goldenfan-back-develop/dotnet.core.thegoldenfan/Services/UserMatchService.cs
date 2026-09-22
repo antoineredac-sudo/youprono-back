@@ -330,13 +330,20 @@ namespace dotnet.core.thegoldenfan.Services
 
         private static readonly QuizQuestion[] QUIZ = new[]
         {
-            // Journee du 23 remplacee le 22 septembre a midi : sept joueurs avaient
-            // deja repondu aux trois questions d'origine, ouvertes en avance pour
-            // les essais. Les identifiants ne bougent pas (q20260923-1, -2, -3) :
-            // ces sept-la gardent leurs points et ne rejoueront pas cette journee,
-            // tous les autres decouvriront les nouvelles questions. Les trois
-            // questions retirees sont perdues pour ce defi — ne pas les replacer
-            // ailleurs, sept personnes en connaissent deja les reponses.
+            // Le defi gagne une journee, celle du 22 septembre, decidee le 22 a
+            // 13 h 30. Elle porte les trois questions d'origine, celles que sept
+            // joueurs avaient deja jouees quand la premiere journee etait ouverte
+            // en avance, et celles que le courriel de midi a envoye decouvrir.
+            // Leurs reponses sont deplacees de q20260923-* vers q20260922-* par
+            // l'instruction de demarrage de Program.cs : elles suivent la question
+            // a laquelle ils ont reellement repondu.
+            new QuizQuestion { Jour = "2026-09-22", Rang = 1, Texte = "En quelle année le PSG a-t-il été fondé ?", Choix = new[] { "1960", "1970", "1974", "1977" }, Bonne = 1 },
+            new QuizQuestion { Jour = "2026-09-22", Rang = 2, Texte = "Qui est le meilleur buteur de l'histoire du PSG ?", Choix = new[] { "Zlatan Ibrahimović", "Pauleta", "Edinson Cavani", "Kylian Mbappé" }, Bonne = 3 },
+            new QuizQuestion { Jour = "2026-09-22", Rang = 3, Texte = "Combien de matchs Marquinhos a-t-il disputés avec le PSG avant cette trêve ?", Choix = new[] { "529", "512", "487", "428" }, Bonne = 0 },
+
+            // Les trois nouvelles questions prennent la journee du 23. Elles ne
+            // s'ouvriront qu'a minuit, comme toutes les autres : la premiere
+            // journee n'est plus ouverte en avance.
             new QuizQuestion { Jour = "2026-09-23", Rang = 1, Texte = "Quel entraîneur a dirigé le PSG entre Laurent Blanc et Thomas Tuchel ?", Choix = new[] { "Rafael Benítez", "Marcelo Bielsa", "Unai Emery", "Massimiliano Allegri" }, Bonne = 2 },
             new QuizQuestion { Jour = "2026-09-23", Rang = 2, Texte = "Quel club le PSG a-t-il éliminé en quart de finale de la Ligue des champions 2025 ?", Choix = new[] { "Arsenal", "Borussia Dortmund", "Bayern Munich", "Aston Villa" }, Bonne = 3 },
             new QuizQuestion { Jour = "2026-09-23", Rang = 3, Texte = "Quel meneur de jeu algérien a porté le maillot du PSG de 1974 à 1984 ?", Choix = new[] { "Rabah Madjer", "Mustapha Dahleb", "Ali Benarbia", "Mustapha Hadji" }, Bonne = 1 },
@@ -405,11 +412,10 @@ namespace dotnet.core.thegoldenfan.Services
             DateTime date;
             if (!DateTime.TryParse(jour, out date)) { return false; }
 
-            // La premiere journee est ouverte des a present : decision d'Antoine le
-            // 21 septembre au soir, pour pouvoir relire ses questions en situation
-            // avant l'annonce. Les journees suivantes s'ouvrent a leur date, a minuit.
-            if (jour.Equals(QUIZ[0].Jour, StringComparison.Ordinal)) { return true; }
-
+            // Plus d'ouverture en avance : la journee du 22 est celle du jour, les
+            // suivantes s'ouvrent a leur date, a minuit. L'avance du 21 septembre
+            // au soir n'avait qu'un but, permettre a Antoine de relire ses
+            // questions en situation ; elle a rempli son office.
             return QuizMaintenantParis().Date >= date.Date;
         }
 
