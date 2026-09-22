@@ -256,6 +256,24 @@ namespace dotnet.core.thegoldenfan.controllers
             return res;
         }
 
+        // Remet l'abonnement de tous les comptes qui portent une adresse.
+        // Reservee a l'administration : elle demande le code d'acces.
+        [HttpPost("Resubscribe/{accessCode}/{adresse}")]
+        public async Task<ResponseModel<UserService.ResubscribeResult>> ResubscribeAsync(string accessCode, string adresse)
+        {
+            ResponseModel<UserService.ResubscribeResult> res = ResponseModel<UserService.ResubscribeResult>.CreateDefault();
+            try
+            {
+                var result = await service.ResubscribeAsync(accessCode, adresse);
+                res = new ResponseModel<UserService.ResubscribeResult>(0, result);
+            }
+            catch (Exception ex)
+            {
+                res = ResponseModel<UserService.ResubscribeResult>.Exception(ex);
+            }
+            return res;
+        }
+
         // Mot de passe ou pseudo oublie : on envoie le pseudo et un lien.
         [HttpPost("Forgot")]
         public async Task<ResponseModel<bool>> ForgotAsync([FromBody] UserService.ForgotModel model)
