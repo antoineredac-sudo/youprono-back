@@ -16,6 +16,10 @@ public partial class Group
     // Valeur par defaut en base : "amis". Tous les groupes existants le sont.
     public string Type { get; set; } = "amis";
 
+    // Ouvert a tous, ou reserve a ceux qui ont le code. Les groupes crees avant
+    // le 23 septembre 2026 valent false : ils restent entre leurs membres.
+    public bool IsPublic { get; set; }
+
     public Guid CreatorId { get; set; }
 
     public DateTime CreatedDate { get; set; }
