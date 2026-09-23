@@ -182,6 +182,13 @@ namespace dotnet.core.thegoldenfan.Services
 
             // "amis" ou "kop".
             public string Type { get; set; } = TypeAmis;
+
+            // L'heure a laquelle le tournoi ferme ses inscriptions -- la cloture
+            // des predictions de son prochain match. Nulle quand il n'y a plus de
+            // match au calendrier. Le site s'en sert pour mettre en tete de
+            // l'accueil le tournoi ou l'on peut encore faire entrer du monde
+            // (23 septembre 2026).
+            public DateTime? InscriptionsFermeture { get; set; }
         }
 
         // La place d'un membre sur un match du cycle, avec le nombre de joueurs
@@ -1038,9 +1045,13 @@ namespace dotnet.core.thegoldenfan.Services
             // Un kop ne s'inscrit pas de force : il n'a ni cycle, ni classement.
             if (IsKop(group.Type)) { throw BaseException.InvalidModel(-2, src); }
 
-            // Seul le createur inscrit. N'importe quel membre pourrait le faire,
-            // mais alors personne ne sait plus a qui l'on doit sa presence.
-            if (!group.CreatorId.Equals(parrainId)) { throw BaseException.InvalidModel(-3, src); }
+            // Tout membre inscrit, pas seulement le createur (Antoine, 23
+            // septembre 2026 au soir). Une table d'amis se remplit a plusieurs
+            // mains : ce qu'un tournoi prive protege, c'est l'arrivee d'inconnus
+            // par la liste publique, pas celle de l'ami d'un ami. On garde trace
+            // de qui a inscrit qui, pour pouvoir le dire a l'interesse.
+            if (!group.Members.Any(m => m.UserId.Equals(parrainId)))
+            { throw BaseException.InvalidModel(-3, src); }
 
             var invite = await dbContext.Users.FirstOrDefaultAsync(w => w.Id.Equals(userId));
             if (invite == null) { throw BaseException.NotFound(-4, src); }
@@ -2985,6 +2996,31 @@ namespace dotnet.core.thegoldenfan.Services
             return result;
         }
 
+        // La meme regle que FermetureDesInscriptionsAsync, mais sur un calendrier
+        // deja en memoire : la liste des tournois d'un joueur aurait sinon
+        // interroge la base une fois par tournoi.
+        private DateTime? FermetureSurCalendrier(
+            DateTime creation,
+            List<(Guid Id, string? Statut, DateTime Quand)> calendrier)
+        {
+            var aVenir = calendrier.Where(w => w.Quand >= creation).ToList();
+
+            DateTime maintenant = DateTime.UtcNow;
+            int cycle = 0;
+            while (true)
+            {
+                var bloc = aVenir.Skip(cycle * SeasonLength).Take(SeasonLength).ToList();
+                if (bloc.Count < SeasonLength) { break; }
+                if (bloc.Any(a => !IsPlayed(a.Statut))) { break; }
+                if (maintenant < bloc.Last().Quand.AddHours(ChampionDisplayHours)) { break; }
+                cycle++;
+            }
+
+            var premier = aVenir.Skip(cycle * SeasonLength).Take(1).ToList();
+            if (premier.Count == 0) { return null; }
+            return ParisToUtc(premier[0].Quand.AddHours(-ClotureAvantHeures));
+        }
+
         public async Task<List<GroupResult>> ByUserIdAsync(Guid userId)
         {
             var memberships = await dbContext.GroupMembers
@@ -2992,6 +3028,16 @@ namespace dotnet.core.thegoldenfan.Services
                 .Include(i => i.Group)
                 .ThenInclude(i => i.Members)
                 .ToListAsync();
+
+            // Un seul passage en base pour tout le calendrier, quel que soit le
+            // nombre de tournois du joueur.
+            var brut = await dbContext.Matches
+                .OrderBy(o => o.DateTime)
+                .Select(s => new { s.Id, s.Status, s.DateTime })
+                .ToListAsync();
+            var calendrier = brut
+                .Select(x => (Id: x.Id, Statut: x.Status, Quand: x.DateTime))
+                .ToList();
 
             return memberships.Select(m => new GroupResult
             {
@@ -3001,7 +3047,10 @@ namespace dotnet.core.thegoldenfan.Services
                 CreatedDate = m.Group.CreatedDate,
                 MemberCount = m.Group.Members.Count,
                 CreatorId = m.Group.CreatorId,
-                Type = m.Group.Type
+                Type = m.Group.Type,
+                InscriptionsFermeture = IsKop(m.Group.Type)
+                    ? null
+                    : FermetureSurCalendrier(m.Group.CreatedDate, calendrier)
             }).ToList();
         }
     }
