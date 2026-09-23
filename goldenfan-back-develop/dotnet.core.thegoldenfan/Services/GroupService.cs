@@ -157,12 +157,15 @@ namespace dotnet.core.thegoldenfan.Services
             if (dejaDansUnKop) { throw BaseException.AlreadyInDb(-9, src); }
         }
 
+        // Vrai par defaut : le jeu cherche du monde, et l'ouverture est ce qui
+        // remplit la salle. Le prive est un choix, pas un oubli.
         public class CreateGroupInput
         {
             public string Name { get; set; } = null!;
 
             // "amis" (par defaut) ou "kop". Absent ou inconnu : groupe d'amis.
             public string? Type { get; set; }
+            public bool IsPublic { get; set; } = true;
         }
 
         public class GroupResult
@@ -573,6 +576,9 @@ namespace dotnet.core.thegoldenfan.Services
             // Le joueur qui demande la liste en fait déjà partie.
             public bool Member { get; set; }
 
+            // Ouvert a tous, ou reserve a ceux qui ont le code.
+            public bool Public { get; set; }
+
             // L'heure à laquelle la porte se ferme (UTC). Nulle si le calendrier
             // ne connaît pas encore le premier match du cycle.
             public DateTime? ClosesAt { get; set; }
@@ -594,10 +600,13 @@ namespace dotnet.core.thegoldenfan.Services
 
             // Seuls les groupes d'amis sont des tournois. Les kops n'ont ni cycle,
             // ni vainqueur, ni porte à fermer.
+            // Les tournois publics, plus les prives dont le joueur est membre :
+            // il doit retrouver les siens, sans que la salle les expose a tous.
             var groupes = await dbContext.Groups
                 .Include(i => i.Members)
                 .ThenInclude(i => i.User)
-                .Where(w => w.Type.Equals(TypeAmis))
+                .Where(w => w.Type.Equals(TypeAmis)
+                         && (w.IsPublic || w.Members.Any(m => m.UserId.Equals(userId))))
                 .ToListAsync();
 
             if (groupes.Count == 0) { return res; }
@@ -676,6 +685,7 @@ namespace dotnet.core.thegoldenfan.Services
                     Open = ouvert,
                     Full = false,
                     Member = g.Members.Any(m => m.UserId.Equals(userId)),
+                    Public = g.IsPublic,
                     ClosesAt = ferme,
                     MatchesPlayed = joues[g.Id].Count,
                     Leader = null
@@ -880,6 +890,9 @@ namespace dotnet.core.thegoldenfan.Services
                 Name = name,
                 InviteCode = inviteCode,
                 Type = type,
+                // Un kop n'est pas un tournoi : il se rejoint par son code, comme
+                // avant, et n'a rien a faire dans la salle.
+                IsPublic = !IsKop(type) && input.IsPublic,
                 CreatorId = creatorId,
                 CreatedDate = naissance
             };
