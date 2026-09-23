@@ -2996,27 +2996,38 @@ namespace dotnet.core.thegoldenfan.Services
             return result;
         }
 
+        // Une ligne du calendrier, telle qu'on la garde en memoire le temps de
+        // dater la fermeture de chaque tournoi.
+        private class MatchDuCalendrier
+        {
+            public string? Statut { get; set; }
+            public DateTime Quand { get; set; }
+        }
+
         // La meme regle que FermetureDesInscriptionsAsync, mais sur un calendrier
         // deja en memoire : la liste des tournois d'un joueur aurait sinon
         // interroge la base une fois par tournoi.
-        private DateTime? FermetureSurCalendrier(
+        private static DateTime? FermetureSurCalendrier(
             DateTime creation,
-            List<(Guid Id, string? Statut, DateTime Quand)> calendrier)
+            List<MatchDuCalendrier> calendrier)
         {
-            var aVenir = calendrier.Where(w => w.Quand >= creation).ToList();
+            List<MatchDuCalendrier> aVenir =
+                calendrier.Where(w => w.Quand >= creation).ToList();
 
             DateTime maintenant = DateTime.UtcNow;
             int cycle = 0;
             while (true)
             {
-                var bloc = aVenir.Skip(cycle * SeasonLength).Take(SeasonLength).ToList();
+                List<MatchDuCalendrier> bloc =
+                    aVenir.Skip(cycle * SeasonLength).Take(SeasonLength).ToList();
                 if (bloc.Count < SeasonLength) { break; }
                 if (bloc.Any(a => !IsPlayed(a.Statut))) { break; }
-                if (maintenant < bloc.Last().Quand.AddHours(ChampionDisplayHours)) { break; }
+                if (maintenant < bloc[bloc.Count - 1].Quand.AddHours(ChampionDisplayHours)) { break; }
                 cycle++;
             }
 
-            var premier = aVenir.Skip(cycle * SeasonLength).Take(1).ToList();
+            List<MatchDuCalendrier> premier =
+                aVenir.Skip(cycle * SeasonLength).Take(1).ToList();
             if (premier.Count == 0) { return null; }
             return ParisToUtc(premier[0].Quand.AddHours(-ClotureAvantHeures));
         }
@@ -3031,13 +3042,10 @@ namespace dotnet.core.thegoldenfan.Services
 
             // Un seul passage en base pour tout le calendrier, quel que soit le
             // nombre de tournois du joueur.
-            var brut = await dbContext.Matches
+            List<MatchDuCalendrier> calendrier = await dbContext.Matches
                 .OrderBy(o => o.DateTime)
-                .Select(s => new { s.Id, s.Status, s.DateTime })
+                .Select(s => new MatchDuCalendrier { Statut = s.Status, Quand = s.DateTime })
                 .ToListAsync();
-            var calendrier = brut
-                .Select(x => (Id: x.Id, Statut: x.Status, Quand: x.DateTime))
-                .ToList();
 
             return memberships.Select(m => new GroupResult
             {
@@ -3049,7 +3057,7 @@ namespace dotnet.core.thegoldenfan.Services
                 CreatorId = m.Group.CreatorId,
                 Type = m.Group.Type,
                 InscriptionsFermeture = IsKop(m.Group.Type)
-                    ? null
+                    ? (DateTime?)null
                     : FermetureSurCalendrier(m.Group.CreatedDate, calendrier)
             }).ToList();
         }
