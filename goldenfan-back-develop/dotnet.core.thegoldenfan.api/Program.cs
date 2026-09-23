@@ -41,6 +41,14 @@ using (var scope = app.Services.CreateScope())
         db.Database.ExecuteSqlRaw(
             "ALTER TABLE \"Group\" ADD COLUMN IF NOT EXISTS \"IsPublic\" boolean NOT NULL DEFAULT false;");
 
+        // Un joueur peut en inscrire un autre a son tournoi. On garde qui l'a
+        // inscrit -- pour le lui dire -- et si on le lui a deja dit
+        // (23 septembre 2026). Nul pour tous ceux qui se sont inscrits seuls.
+        db.Database.ExecuteSqlRaw(
+            "ALTER TABLE \"GroupMember\" ADD COLUMN IF NOT EXISTS \"AddedByUserId\" uuid;");
+        db.Database.ExecuteSqlRaw(
+            "ALTER TABLE \"GroupMember\" ADD COLUMN IF NOT EXISTS \"NoticeSeen\" boolean NOT NULL DEFAULT true;");
+
         // L'adresse e-mail. Nullable : les joueurs inscrits avant cette version
         // n'en ont pas, on la leur demandera a leur prochaine connexion.
         db.Database.ExecuteSqlRaw(
