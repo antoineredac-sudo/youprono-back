@@ -1535,12 +1535,16 @@ namespace dotnet.core.thegoldenfan.Services
 
               + BoutonHtml("https://thegoldenfan.fr/#results", "Mon r&eacute;sultat", false, false)
 
-              // L'invitation a creer un groupe, sous le classement (texte d'Antoine,
-              // 20 septembre 2026). Le bouton ouvre directement l'ecran ou l'on
-              // nomme son groupe ; WhatsApp s'ouvre ensuite avec l'invitation.
-              + PARA + "Si tu as envie de te confronter &agrave; tes amis lors du prochain match, "
-              + "invite-les sur WhatsApp.</p>"
-              + BoutonHtml("https://thegoldenfan.fr/#creer-groupe", "Cr&eacute;er un groupe", true, true)
+              // L'invitation au tournoi, sous le classement (texte d'Antoine,
+              // 23 septembre 2026, le meme que sur le site). Le bouton n'ouvre plus
+              // WhatsApp : il emmene dans la salle des tournois, ou le joueur choisit
+              // entre rejoindre une table ouverte et ouvrir la sienne. Rouge, donc,
+              // et sans le picto vert.
+              + PARA + "Passe en mode tournoi et d&eacute;couvre une nouvelle fa&ccedil;on "
+              + "de jouer en d&eacute;fiant tes amis sur WhatsApp, sur X ou parmi les "
+              + "membres du jeu.</p>"
+              + BoutonHtml("https://thegoldenfan.fr/#creer-groupe",
+                           "Cr&eacute;er ou rejoindre un tournoi", false, false)
 
               + "<p style=\"font-family:" + POLICE + ";font-size:16px;line-height:1.7;"
               + "color:" + C_OR + ";margin:22px 0 0;font-weight:bold;\">Allez Paris</p>";
@@ -1554,8 +1558,9 @@ namespace dotnet.core.thegoldenfan.Services
               + "Decouvre tous tes resultats en detail, les badges que tu as peut-etre debloques "
               + "et ton nouveau classement.\n\n"
               + "Mon resultat : https://thegoldenfan.fr/#results\n\n"
-              + "Si tu as envie de te confronter a tes amis lors du prochain match, invite-les sur WhatsApp.\n\n"
-              + "Creer un groupe : https://thegoldenfan.fr/#creer-groupe\n\n"
+              + "Passe en mode tournoi et decouvre une nouvelle facon de jouer en defiant "
+              + "tes amis sur WhatsApp, sur X ou parmi les membres du jeu.\n\n"
+              + "Creer ou rejoindre un tournoi : https://thegoldenfan.fr/#creer-groupe\n\n"
               + "Allez Paris\n\n"
               + "@thegoldenfan\n\n"
               + "---\n"
