@@ -481,15 +481,35 @@ namespace dotnet.core.thegoldenfan.Services
         // Il se réveille dès qu'il enregistre un prono pour un match à venir.
         //   - un dormeur ne compte plus dans les onze places d'un groupe d'amis ;
         //   - il disparaît du classement affiché (ses anciens points restent dans
-        //     le calcul des autres, rien ne bouge pour eux) ;
-        //   - rien n'est écrit en base : le statut se déduit à chaque lecture.
+        //     le calcul des autres, rien ne bouge pour eux).
+        //
+        // ===== L'EXCLUSION (décidée par Antoine le 23 septembre 2026) =====
+        // Le sommeil ne se réveille plus : dès qu'il est constaté, il est daté
+        // dans ExcludedDate, et le membre est sorti du tournoi pour de bon. Le
+        // tournoi disparaît de sa liste ; seule une réinvitation le ramène, et
+        // n'importe quel membre peut la lui faire.
+        //   - le créateur fait exception : il quitte le classement comme les
+        //     autres, mais sa ligne n'est jamais datée. Une table où tout le
+        //     monde s'endort se refermerait sinon sur elle-même, sans personne
+        //     pour réinviter ni pour lire le code d'invitation ;
+        //   - les points d'un exclu restent dans le calcul des autres : effacer
+        //     sa présence réécrirait le passé et déplacerait toutes les places
+        //     des soirs où il a joué.
         private const int MatchsManquesPourSommeil = 3;
 
-        private async Task<HashSet<Guid>> MembresEnSommeilAsync(IEnumerable<GroupMember> membres)
+        private async Task<HashSet<Guid>> MembresEnSommeilAsync(
+            IEnumerable<GroupMember> membres, Group? tournoi = null)
         {
             var liste = membres.ToList();
             var dormeurs = new HashSet<Guid>();
             if (liste.Count == 0) { return dormeurs; }
+
+            // Les exclus d'hier le sont toujours : leur date le dit, et aucune
+            // prédiction ne l'efface.
+            foreach (var deja in liste)
+            {
+                if (deja.ExcludedDate.HasValue) { dormeurs.Add(deja.UserId); }
+            }
 
             DateTime maintenantParis = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, ParisTimeZone);
             // Un match est clos deux heures avant son coup d'envoi : il l'est donc
@@ -534,6 +554,26 @@ namespace dotnet.core.thegoldenfan.Services
                 if (derniers.Count < MatchsManquesPourSommeil) { continue; }
 
                 if (!derniers.Any(id => sesPronos.Contains(id))) { dormeurs.Add(m.UserId); }
+            }
+
+            // Ce qui est constaté est consigné : le sommeil devient l'exclusion.
+            // Deux exemptions. Le créateur, qui reste le gardien de la table --
+            // sans lui, un tournoi où tout le monde s'endort se refermerait sur
+            // lui-même, sans personne pour réinviter ni pour lire le code. Et les
+            // kops, qui ne sont pas des tournois : on n'exclut pas un supporter
+            // d'un club de supporters parce qu'il a sauté trois matchs. Là, le
+            // sommeil reste ce qu'il était -- réversible, et de simple affichage.
+            var nouveaux = (tournoi == null || IsKop(tournoi.Type))
+                ? new List<GroupMember>()
+                : liste
+                    .Where(w => dormeurs.Contains(w.UserId)
+                             && !w.ExcludedDate.HasValue
+                             && !w.UserId.Equals(tournoi.CreatorId))
+                    .ToList();
+            if (nouveaux.Count > 0)
+            {
+                foreach (var sortant in nouveaux) { sortant.ExcludedDate = DateTime.UtcNow; }
+                await dbContext.SaveChangesAsync();
             }
             return dormeurs;
         }
@@ -704,7 +744,7 @@ namespace dotnet.core.thegoldenfan.Services
                     // sur un tournoi ouvert, où il libère une place. Il coûte trois
                     // requêtes, autant ne pas les payer pour une ligne qu'on ne peut
                     // plus rejoindre de toute façon.
-                    var dormeurs = await MembresEnSommeilAsync(g.Members);
+                    var dormeurs = await MembresEnSommeilAsync(g.Members, g);
                     ligne.Full = g.Members.Count(m => !dormeurs.Contains(m.UserId)) >= MaxMembers;
                 }
                 else if (joues[g.Id].Count > 0)
@@ -965,7 +1005,10 @@ namespace dotnet.core.thegoldenfan.Services
             var user = await dbContext.Users.FirstOrDefaultAsync(w => w.Id.Equals(userId));
             if (user == null) { throw BaseException.NotFound(-2, src); }
 
-            if (group.Members.Any(m => m.UserId.Equals(userId)))
+            // Un exclu qui a gardé le code rentre par la même porte : sa date
+            // s'efface (23 septembre 2026).
+            var revenant = group.Members.FirstOrDefault(m => m.UserId.Equals(userId));
+            if (revenant != null && !revenant.ExcludedDate.HasValue)
             { throw BaseException.AlreadyInDb(-3, src); }
 
             // Le plafond des onze ne concerne que les groupes d'amis. Un kop n'en a pas,
@@ -974,7 +1017,8 @@ namespace dotnet.core.thegoldenfan.Services
             {
                 await EnsureNoOtherKopAsync(userId, src);
             }
-            else if (group.Members.Count - (await MembresEnSommeilAsync(group.Members)).Count >= MaxMembers)
+            else if (group.Members.Count
+                     - (await MembresEnSommeilAsync(group.Members, group)).Count >= MaxMembers)
             {
                 // Seuls les membres éveillés occupent une place (16 septembre 2026).
                 throw BaseException.InvalidModel(-4, src);
@@ -993,13 +1037,21 @@ namespace dotnet.core.thegoldenfan.Services
                 }
             }
 
-            dbContext.GroupMembers.Add(new GroupMember
+            if (revenant != null)
             {
-                Id = Guid.NewGuid(),
-                GroupId = group.Id,
-                UserId = userId,
-                DateJoined = DateTime.UtcNow
-            });
+                revenant.ExcludedDate = null;
+                revenant.DateJoined = DateTime.UtcNow;
+            }
+            else
+            {
+                dbContext.GroupMembers.Add(new GroupMember
+                {
+                    Id = Guid.NewGuid(),
+                    GroupId = group.Id,
+                    UserId = userId,
+                    DateJoined = DateTime.UtcNow
+                });
+            }
             await dbContext.SaveChangesAsync();
 
             return new GroupResult
@@ -1008,7 +1060,7 @@ namespace dotnet.core.thegoldenfan.Services
                 Name = group.Name,
                 InviteCode = group.InviteCode,
                 CreatedDate = group.CreatedDate,
-                MemberCount = group.Members.Count + 1,
+                MemberCount = group.Members.Count + ((revenant != null) ? 0 : 1),
                 CreatorId = group.CreatorId,
                 Type = group.Type
             };
@@ -1050,16 +1102,22 @@ namespace dotnet.core.thegoldenfan.Services
             // mains : ce qu'un tournoi prive protege, c'est l'arrivee d'inconnus
             // par la liste publique, pas celle de l'ami d'un ami. On garde trace
             // de qui a inscrit qui, pour pouvoir le dire a l'interesse.
-            if (!group.Members.Any(m => m.UserId.Equals(parrainId)))
+            // Membre, et encore a la table : un exclu n'invite plus personne dans
+            // un tournoi dont il est sorti.
+            if (!group.Members.Any(m => m.UserId.Equals(parrainId)
+                                     && !m.ExcludedDate.HasValue))
             { throw BaseException.InvalidModel(-3, src); }
 
             var invite = await dbContext.Users.FirstOrDefaultAsync(w => w.Id.Equals(userId));
             if (invite == null) { throw BaseException.NotFound(-4, src); }
 
-            if (group.Members.Any(m => m.UserId.Equals(userId)))
+            // Celui qui a été exclu peut revenir : on efface sa date au lieu de
+            // lui ouvrir une seconde ligne. Celui qui est encore là, non.
+            var ancienne = group.Members.FirstOrDefault(m => m.UserId.Equals(userId));
+            if (ancienne != null && !ancienne.ExcludedDate.HasValue)
             { throw BaseException.AlreadyInDb(-5, src); }
 
-            var dormeurs = await MembresEnSommeilAsync(group.Members);
+            var dormeurs = await MembresEnSommeilAsync(group.Members, group);
             if (group.Members.Count - dormeurs.Count >= MaxMembers)
             { throw BaseException.InvalidModel(-6, src); }
 
@@ -1069,15 +1127,25 @@ namespace dotnet.core.thegoldenfan.Services
             if (!ferme.HasValue || DateTime.UtcNow >= ferme.Value)
             { throw BaseException.InvalidModel(-7, src); }
 
-            dbContext.GroupMembers.Add(new GroupMember
+            if (ancienne != null)
             {
-                Id = Guid.NewGuid(),
-                GroupId = group.Id,
-                UserId = userId,
-                DateJoined = DateTime.UtcNow,
-                AddedByUserId = parrainId,
-                NoticeSeen = false
-            });
+                ancienne.ExcludedDate = null;
+                ancienne.DateJoined = DateTime.UtcNow;
+                ancienne.AddedByUserId = parrainId;
+                ancienne.NoticeSeen = false;
+            }
+            else
+            {
+                dbContext.GroupMembers.Add(new GroupMember
+                {
+                    Id = Guid.NewGuid(),
+                    GroupId = group.Id,
+                    UserId = userId,
+                    DateJoined = DateTime.UtcNow,
+                    AddedByUserId = parrainId,
+                    NoticeSeen = false
+                });
+            }
             await dbContext.SaveChangesAsync();
 
             return new InscriptionResult
@@ -1220,8 +1288,9 @@ namespace dotnet.core.thegoldenfan.Services
 
             var memberIds = group.Members.Select(m => m.UserId).ToList();
 
-            // Les membres en sommeil sont retirés de la liste affichée, pas du calcul.
-            var dormeurs = await MembresEnSommeilAsync(group.Members);
+            // Les membres exclus sont retirés de la liste affichée, pas du calcul :
+            // leurs anciennes places restent celles des soirs où ils ont joué.
+            var dormeurs = await MembresEnSommeilAsync(group.Members, group);
 
             // On récupère la note DU MATCH (ResultTotal), et non la moyenne de saison
             // (ResultFinalTotal), qui ne sert ici qu'à départager les ex aequo.
@@ -2878,7 +2947,9 @@ namespace dotnet.core.thegoldenfan.Services
                 .FirstOrDefaultAsync(w => w.InviteCode.Equals(code));
             if (group == null) { throw BaseException.NotFound(-2, src); }
 
-            int endormis = IsKop(group.Type) ? 0 : (await MembresEnSommeilAsync(group.Members)).Count;
+            int endormis = IsKop(group.Type)
+                ? 0
+                : (await MembresEnSommeilAsync(group.Members, group)).Count;
 
             return new GroupByCodeResult
             {
@@ -3034,8 +3105,10 @@ namespace dotnet.core.thegoldenfan.Services
 
         public async Task<List<GroupResult>> ByUserIdAsync(Guid userId)
         {
+            // Un exclu ne voit plus le tournoi d'où il est sorti : il n'apparaît
+            // ni sur son accueil, ni dans sa liste (23 septembre 2026).
             var memberships = await dbContext.GroupMembers
-                .Where(w => w.UserId.Equals(userId))
+                .Where(w => w.UserId.Equals(userId) && w.ExcludedDate == null)
                 .Include(i => i.Group)
                 .ThenInclude(i => i.Members)
                 .ToListAsync();
