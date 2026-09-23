@@ -575,52 +575,49 @@ namespace dotnet.core.thegoldenfan.Services
         // n'y est pas inscrit. Un seul pseudo a changer pour en designer un autre.
         private const string HoteDesTournois = "lepsgdantoine";
 
-        private static readonly string[] MoisEnFrancais = new string[]
-        {
-            "janvier", "fevrier", "mars", "avril", "mai", "juin",
-            "juillet", "aout", "septembre", "octobre", "novembre", "decembre"
-        };
-
         private async Task OuvrirLaTableDuJourAsync()
         {
             DateTime paris = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, ParisTimeZone);
             if (paris.Hour < 8) { return; }
 
-            // La fenetre de matchs qui justifie la table, et le mot qui la nomme.
-            DateTime depuis = paris.Date;
-            DateTime jusqua = paris.Date;
-            string quand = "";
+            // 2 = mardi, 5 = vendredi. On compare des entiers plutot que des
+            // valeurs d'enumeration : le fichier n'en manipule nulle part ailleurs.
+            int jourDeLaSemaine = (int)paris.DayOfWeek;
+            if (jourDeLaSemaine != 2 && jourDeLaSemaine != 5) { return; }
 
-            if (paris.DayOfWeek == DayOfWeek.Tuesday)
+            DateTime minuit = new DateTime(paris.Year, paris.Month, paris.Day, 0, 0, 0);
+
+            // Mardi : le match est mardi ou mercredi. Vendredi : vendredi, samedi
+            // ou dimanche.
+            int combienDeJours = 2;
+            string quand = "mardi";
+            if (jourDeLaSemaine == 5)
             {
-                depuis = paris.Date;
-                jusqua = paris.Date.AddDays(2);
-                quand = "mardi";
-            }
-            else if (paris.DayOfWeek == DayOfWeek.Friday)
-            {
-                depuis = paris.Date;
-                jusqua = paris.Date.AddDays(3);
+                combienDeJours = 3;
                 quand = "vendredi";
             }
-            else
-            {
-                return;
-            }
+            DateTime jusqua = minuit.AddDays(combienDeJours);
 
             // Les dates des matchs sont en heure de Paris, comme celle-ci.
             bool ilYAMatch = await dbContext.Matches
-                .AnyAsync(w => w.DateTime >= depuis && w.DateTime < jusqua);
+                .AnyAsync(w => w.DateTime >= minuit && w.DateTime < jusqua);
             if (!ilYAMatch) { return; }
 
+            string[] mois = new string[12];
+            mois[0] = "janvier";   mois[1] = "fevrier";  mois[2] = "mars";
+            mois[3] = "avril";     mois[4] = "mai";      mois[5] = "juin";
+            mois[6] = "juillet";   mois[7] = "aout";     mois[8] = "septembre";
+            mois[9] = "octobre";   mois[10] = "novembre"; mois[11] = "decembre";
+
             string nom = "Tournoi du " + quand + " " + paris.Day.ToString()
-                       + " " + MoisEnFrancais[paris.Month - 1];
+                       + " " + mois[paris.Month - 1];
 
             bool dejaLa = await dbContext.Groups.AnyAsync(w => w.Name.Equals(nom));
             if (dejaLa) { return; }
 
+            string pseudoDeLHote = HoteDesTournois;
             var hote = await dbContext.Users
-                .FirstOrDefaultAsync(w => w.DisplayName == HoteDesTournois);
+                .FirstOrDefaultAsync(w => w.DisplayName == pseudoDeLHote);
             if (hote == null) { return; }
 
             string code;
@@ -718,8 +715,10 @@ namespace dotnet.core.thegoldenfan.Services
             // Les tournois publics, plus les prives dont le joueur est membre :
             // il doit retrouver les siens, sans que la salle les expose a tous.
             // Avant de dresser la liste, on regarde si le jeu doit ouvrir sa table
-            // du jour. C'est le seul moment ou quelqu'un regarde la salle.
-            await OuvrirLaTableDuJourAsync();
+            // du jour. C'est le seul moment ou quelqu'un regarde la salle. Si
+            // l'ouverture echoue, la salle s'affiche quand meme : une table en
+            // moins vaut mieux qu'une page blanche.
+            try { await OuvrirLaTableDuJourAsync(); } catch { }
 
             var groupes = await dbContext.Groups
                 .Include(i => i.Members)
