@@ -49,6 +49,11 @@ using (var scope = app.Services.CreateScope())
         db.Database.ExecuteSqlRaw(
             "ALTER TABLE \"GroupMember\" ADD COLUMN IF NOT EXISTS \"NoticeSeen\" boolean NOT NULL DEFAULT true;");
 
+        // L'exclusion apres trois matchs sans jouer (23 septembre 2026). Nulle
+        // pour tous les membres en place : personne n'est exclu retroactivement.
+        db.Database.ExecuteSqlRaw(
+            "ALTER TABLE \"GroupMember\" ADD COLUMN IF NOT EXISTS \"ExcludedDate\" timestamp without time zone;");
+
         // L'adresse e-mail. Nullable : les joueurs inscrits avant cette version
         // n'en ont pas, on la leur demandera a leur prochaine connexion.
         db.Database.ExecuteSqlRaw(
