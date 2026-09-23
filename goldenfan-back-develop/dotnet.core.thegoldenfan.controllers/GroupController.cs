@@ -118,6 +118,24 @@ namespace dotnet.core.thegoldenfan.controllers
             return res;
         }
 
+        // La salle des tournois : ceux qu'on peut encore rejoindre, et ceux qui
+        // se jouent deja. Une seule lecture pour toute la page.
+        [HttpGet("Tournois/{userId}")]
+        public async Task<ResponseModel<TournoisResult>> TournoisAsync(Guid userId)
+        {
+            ResponseModel<TournoisResult> res = ResponseModel<TournoisResult>.CreateDefault();
+            try
+            {
+                var tournois = await service.TournoisAsync(userId);
+                res = new ResponseModel<TournoisResult>(0, tournois);
+            }
+            catch (Exception ex)
+            {
+                res = ResponseModel<TournoisResult>.Exception(ex);
+            }
+            return res;
+        }
+
         [HttpGet("ByUserId/{userId}")]
         public async Task<ResponseModel<List<GroupResult>>> ByUserIdAsync(Guid userId)
         {
