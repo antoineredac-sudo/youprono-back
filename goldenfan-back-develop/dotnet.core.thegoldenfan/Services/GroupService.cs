@@ -1011,6 +1011,130 @@ namespace dotnet.core.thegoldenfan.Services
         // particulier : s'il part, le groupe continue sans lui (CreatorId reste
         // renseigné, l'utilisateur existe toujours en base, rien ne casse).
         // Le dernier membre à sortir éteint la lumière : un groupe vide est supprimé.
+        // ===== INSCRIRE UN JOUEUR DU JEU =====
+        // Le createur va chercher quelqu'un dans le classement general et
+        // l'installe a sa table. L'inscrit ne valide rien : il l'apprend a sa
+        // prochaine connexion et peut quitter le tournoi d'un doigt. C'est le
+        // choix d'Antoine du 23 septembre 2026 -- une demande d'autorisation
+        // aurait mis le createur en position de se faire refuser, et l'inscrit
+        // en attente d'une reponse qui ne vient pas.
+        public class InscriptionResult
+        {
+            public Guid GroupId { get; set; }
+            public string GroupName { get; set; } = null!;
+            public string UserName { get; set; } = null!;
+            public int MemberCount { get; set; }
+        }
+
+        public async Task<InscriptionResult> InscrireAsync(Guid groupId, Guid parrainId, Guid userId)
+        {
+            string src = "GroupService.InscrireAsync";
+
+            var group = await dbContext.Groups
+                .Include(i => i.Members)
+                .FirstOrDefaultAsync(w => w.Id.Equals(groupId));
+            if (group == null) { throw BaseException.NotFound(-1, src); }
+
+            // Un kop ne s'inscrit pas de force : il n'a ni cycle, ni classement.
+            if (IsKop(group.Type)) { throw BaseException.InvalidModel(-2, src); }
+
+            // Seul le createur inscrit. N'importe quel membre pourrait le faire,
+            // mais alors personne ne sait plus a qui l'on doit sa presence.
+            if (!group.CreatorId.Equals(parrainId)) { throw BaseException.InvalidModel(-3, src); }
+
+            var invite = await dbContext.Users.FirstOrDefaultAsync(w => w.Id.Equals(userId));
+            if (invite == null) { throw BaseException.NotFound(-4, src); }
+
+            if (group.Members.Any(m => m.UserId.Equals(userId)))
+            { throw BaseException.AlreadyInDb(-5, src); }
+
+            var dormeurs = await MembresEnSommeilAsync(group.Members);
+            if (group.Members.Count - dormeurs.Count >= MaxMembers)
+            { throw BaseException.InvalidModel(-6, src); }
+
+            // La meme porte que pour tout le monde : passe la cloture, on
+            // n'inscrit plus personne, meme de la main du createur.
+            DateTime? ferme = await FermetureDesInscriptionsAsync(group.CreatedDate);
+            if (!ferme.HasValue || DateTime.UtcNow >= ferme.Value)
+            { throw BaseException.InvalidModel(-7, src); }
+
+            dbContext.GroupMembers.Add(new GroupMember
+            {
+                Id = Guid.NewGuid(),
+                GroupId = group.Id,
+                UserId = userId,
+                DateJoined = DateTime.UtcNow,
+                AddedByUserId = parrainId,
+                NoticeSeen = false
+            });
+            await dbContext.SaveChangesAsync();
+
+            return new InscriptionResult
+            {
+                GroupId = group.Id,
+                GroupName = group.Name,
+                UserName = invite.DisplayName ?? "?",
+                MemberCount = group.Members.Count + 1
+            };
+        }
+
+        // Ce qu'on doit annoncer a un joueur quand il revient : les tournois ou
+        // quelqu'un l'a inscrit et ou il ne le sait pas encore.
+        public class AnnonceResult
+        {
+            public Guid GroupId { get; set; }
+            public string GroupName { get; set; } = null!;
+            public string InviteCode { get; set; } = null!;
+            public string ParrainName { get; set; } = null!;
+            public int MemberCount { get; set; }
+        }
+
+        public async Task<List<AnnonceResult>> AnnoncesAsync(Guid userId)
+        {
+            var lignes = await dbContext.GroupMembers
+                .Include(i => i.Group)
+                .Where(w => w.UserId.Equals(userId)
+                         && w.AddedByUserId != null
+                         && !w.NoticeSeen)
+                .ToListAsync();
+
+            var res = new List<AnnonceResult>();
+            if (lignes.Count == 0) { return res; }
+
+            var parrains = lignes.Select(s => s.AddedByUserId!.Value).Distinct().ToList();
+            var noms = await dbContext.Users
+                .Where(w => parrains.Contains(w.Id))
+                .Select(s => new { s.Id, s.DisplayName })
+                .ToListAsync();
+
+            foreach (var l in lignes)
+            {
+                var p = noms.FirstOrDefault(f => f.Id.Equals(l.AddedByUserId!.Value));
+                int combien = await dbContext.GroupMembers
+                    .CountAsync(c => c.GroupId.Equals(l.GroupId));
+                res.Add(new AnnonceResult
+                {
+                    GroupId = l.GroupId,
+                    GroupName = l.Group.Name,
+                    InviteCode = l.Group.InviteCode,
+                    ParrainName = (p == null) ? "Un joueur" : (p.DisplayName ?? "Un joueur"),
+                    MemberCount = combien
+                });
+            }
+            return res;
+        }
+
+        // Il l'a lu : on ne le lui redira plus.
+        public async Task<bool> AnnonceVueAsync(Guid userId, Guid groupId)
+        {
+            var ligne = await dbContext.GroupMembers
+                .FirstOrDefaultAsync(w => w.UserId.Equals(userId) && w.GroupId.Equals(groupId));
+            if (ligne == null) { return false; }
+            ligne.NoticeSeen = true;
+            await dbContext.SaveChangesAsync();
+            return true;
+        }
+
         public async Task<LeaveGroupResult> LeaveAsync(Guid groupId, Guid userId)
         {
             string src = "GroupService.LeaveAsync";
