@@ -528,24 +528,327 @@ namespace dotnet.core.thegoldenfan.Services
             return dormeurs;
         }
 
-        // Un code court, lisible, sans caractères ambigus (pas de 0/O ni de 1/I)
+        // Un code court, lisible, sans caractères ambigus (pas de 0/O ni de 1/I).
+        // Trois lettres et trois chiffres mélangés (23 septembre 2026) : le code
+        // sert aussi de nom au tournoi, et une suite qui alterne lettres et
+        // chiffres se lit à voix haute sans se tromper.
         private static string GenerateInviteCode()
         {
-            const string chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+            const string lettres = "ABCDEFGHJKLMNPQRSTUVWXYZ";
+            const string chiffres = "23456789";
             var random = new Random();
-            return new string(Enumerable.Range(0, 6).Select(_ => chars[random.Next(chars.Length)]).ToArray());
+
+            var pioche = new List<char>();
+            for (int i = 0; i < 3; i++) { pioche.Add(lettres[random.Next(lettres.Length)]); }
+            for (int i = 0; i < 3; i++) { pioche.Add(chiffres[random.Next(chiffres.Length)]); }
+
+            // Mélange de Fisher-Yates : les trois chiffres ne restent pas à la fin.
+            for (int i = pioche.Count - 1; i > 0; i--)
+            {
+                int j = random.Next(i + 1);
+                char t = pioche[i]; pioche[i] = pioche[j]; pioche[j] = t;
+            }
+            return new string(pioche.ToArray());
+        }
+
+        // ===== LES TOURNOIS =====
+        // Un tournoi est un groupe d'amis vu du dehors : cinq matchs, un vainqueur,
+        // et une porte qui se ferme. Les inscriptions restent ouvertes jusqu'à la
+        // clôture des prédictions du premier match du cycle — après, celui qui
+        // entrerait n'aurait plus aucune chance, et le classement serait faussé.
+        //
+        // Rien n'a été ajouté en base : la date de fermeture se calcule à partir du
+        // calendrier, comme le cycle de cinq matchs le fait déjà.
+        public class TournoiResult
+        {
+            public Guid Id { get; set; }
+            public string Name { get; set; } = null!;
+            public string InviteCode { get; set; } = null!;
+            public int MemberCount { get; set; }
+
+            // Ouvert aux inscriptions : la clôture du premier match n'est pas passée.
+            public bool Open { get; set; }
+            // Onze joueurs éveillés : plus une place, même avant la clôture.
+            public bool Full { get; set; }
+            // Le joueur qui demande la liste en fait déjà partie.
+            public bool Member { get; set; }
+
+            // L'heure à laquelle la porte se ferme (UTC). Nulle si le calendrier
+            // ne connaît pas encore le premier match du cycle.
+            public DateTime? ClosesAt { get; set; }
+
+            // Pour ceux qui ont commencé : où ils en sont, et qui mène.
+            public int MatchesPlayed { get; set; }
+            public string? Leader { get; set; }
+        }
+
+        public class TournoisResult
+        {
+            public List<TournoiResult> Open { get; set; } = new();
+            public List<TournoiResult> Running { get; set; } = new();
+        }
+
+        public async Task<TournoisResult> TournoisAsync(Guid userId)
+        {
+            var res = new TournoisResult();
+
+            // Seuls les groupes d'amis sont des tournois. Les kops n'ont ni cycle,
+            // ni vainqueur, ni porte à fermer.
+            var groupes = await dbContext.Groups
+                .Include(i => i.Members)
+                .ThenInclude(i => i.User)
+                .Where(w => w.Type.Equals(TypeAmis))
+                .ToListAsync();
+
+            if (groupes.Count == 0) { return res; }
+
+            var tousMatchs = await dbContext.Matches
+                .OrderBy(o => o.DateTime)
+                .Select(s => new { s.Id, s.Status, s.DateTime })
+                .ToListAsync();
+
+            DateTime maintenant = DateTime.UtcNow;
+
+            // Première passe, entièrement en mémoire : le cycle de chaque tournoi.
+            // Le même découpage en blocs de cinq que la page du tournoi — on avance
+            // au bloc suivant quand le précédent est complet et que les
+            // vingt-quatre heures d'affichage du vainqueur sont écoulées.
+            var cycles = new Dictionary<Guid, List<string>>();
+            var joues = new Dictionary<Guid, List<string>>();
+            var fermetures = new Dictionary<Guid, DateTime?>();
+
+            foreach (var g in groupes)
+            {
+                var aVenir = tousMatchs.Where(w => w.DateTime >= g.CreatedDate).ToList();
+
+                int cycle = 0;
+                while (true)
+                {
+                    var bloc = aVenir.Skip(cycle * SeasonLength).Take(SeasonLength).ToList();
+                    if (bloc.Count < SeasonLength) { break; }
+                    if (bloc.Any(a => !IsPlayed(a.Status))) { break; }
+                    if (maintenant < bloc.Last().DateTime.AddHours(ChampionDisplayHours)) { break; }
+                    cycle++;
+                }
+
+                var matchsDuCycle = aVenir.Skip(cycle * SeasonLength).Take(SeasonLength).ToList();
+                cycles[g.Id] = matchsDuCycle.Select(sm => sm.Id).ToList();
+                joues[g.Id] = matchsDuCycle.Where(w => IsPlayed(w.Status))
+                                           .Select(sm => sm.Id).ToList();
+                fermetures[g.Id] = matchsDuCycle.Count > 0
+                    ? ParisToUtc(matchsDuCycle[0].DateTime.AddHours(-ClotureAvantHeures))
+                    : (DateTime?)null;
+            }
+
+            // Une seule requête de prédictions pour toute la page, bornée aux matchs
+            // des cycles en cours : sans cette borne, on chargerait tout l'historique
+            // de tous les membres de tous les tournois.
+            var matchsUtiles = cycles.Values.SelectMany(v => v).Distinct().ToList();
+            var tousMembres = groupes.SelectMany(g => g.Members.Select(m => m.UserId))
+                                     .Distinct().ToList();
+
+            var predictions = new List<(Guid UserId, string MatchId, double Note)>();
+            if (matchsUtiles.Count > 0 && tousMembres.Count > 0)
+            {
+                var brut = await dbContext.UserMatches
+                    .Where(w => tousMembres.Contains(w.UserId)
+                             && matchsUtiles.Contains(w.MatchId)
+                             && w.ResultTotal.HasValue)
+                    .Select(sp => new { sp.UserId, sp.MatchId, sp.ResultTotal })
+                    .ToListAsync();
+                foreach (var b in brut)
+                {
+                    predictions.Add((b.UserId, b.MatchId, b.ResultTotal!.Value));
+                }
+            }
+
+            foreach (var g in groupes)
+            {
+                DateTime? ferme = fermetures[g.Id];
+                bool ouvert = ferme.HasValue && maintenant < ferme.Value;
+
+                var ligne = new TournoiResult
+                {
+                    Id = g.Id,
+                    Name = g.Name,
+                    InviteCode = g.InviteCode,
+                    MemberCount = g.Members.Count,
+                    Open = ouvert,
+                    Full = false,
+                    Member = g.Members.Any(m => m.UserId.Equals(userId)),
+                    ClosesAt = ferme,
+                    MatchesPlayed = joues[g.Id].Count,
+                    Leader = null
+                };
+
+                if (ouvert)
+                {
+                    // Le sommeil ne se calcule que là où il décide de quelque chose :
+                    // sur un tournoi ouvert, où il libère une place. Il coûte trois
+                    // requêtes, autant ne pas les payer pour une ligne qu'on ne peut
+                    // plus rejoindre de toute façon.
+                    var dormeurs = await MembresEnSommeilAsync(g.Members);
+                    ligne.Full = g.Members.Count(m => !dormeurs.Contains(m.UserId)) >= MaxMembers;
+                }
+                else if (joues[g.Id].Count > 0)
+                {
+                    ligne.Leader = MeneurDuTournoi(g, joues[g.Id], predictions, tousMatchs
+                        .Where(w => joues[g.Id].Contains(w.Id))
+                        .ToDictionary(k => k.Id, v => v.DateTime));
+                }
+
+                if (ouvert) { res.Open.Add(ligne); } else { res.Running.Add(ligne); }
+            }
+
+            // Les ouverts par heure de fermeture : le plus pressé en tête. Les
+            // autres par avancement, le plus engagé d'abord.
+            res.Open = res.Open
+                .OrderBy(o => o.ClosesAt ?? DateTime.MaxValue)
+                .ThenByDescending(o => o.MemberCount)
+                .ToList();
+            res.Running = res.Running
+                .OrderByDescending(o => o.MatchesPlayed)
+                .ThenByDescending(o => o.MemberCount)
+                .ToList();
+
+            return res;
+        }
+
+        // Qui mène dans un tournoi commencé. Le barème est celui de la page du
+        // groupe : sur chaque match, le dernier participant marque 2 points et
+        // chaque place au-dessus en vaut un de plus. L'absent ne marque rien.
+        private static string? MeneurDuTournoi(Group g, List<string> matchsJoues,
+            List<(Guid UserId, string MatchId, double Note)> predictions,
+            Dictionary<string, DateTime> coupsDEnvoi)
+        {
+            var membres = g.Members.Select(m => m.UserId).ToList();
+            var points = new Dictionary<Guid, int>();
+            foreach (var id in membres) { points[id] = 0; }
+
+            foreach (var idMatch in matchsJoues)
+            {
+                // Le barème est celui de la page du tournoi, au point près : tous les
+                // membres qui ont une note comptent dans le tri, y compris ceux
+                // arrivés depuis. Filtrer ici changerait le nombre de participants,
+                // donc les points de tout le monde, et les deux écrans donneraient
+                // deux classements différents.
+                var notes = predictions
+                    .Where(w => w.MatchId.Equals(idMatch) && membres.Contains(w.UserId))
+                    .OrderByDescending(o => o.Note)
+                    .ToList();
+
+                int r = 0;
+                for (int i = 0; i < notes.Count; i++)
+                {
+                    if (i > 0 && notes[i].Note != notes[i - 1].Note) { r = i; }
+                    int sc = notes.Count - r + 1;
+                    if (sc < 2) { sc = 2; }
+                    points[notes[i].UserId] = points[notes[i].UserId] + sc;
+                }
+            }
+
+            if (points.Count == 0) { return null; }
+
+            // Qui a le droit d'être affiché en tête. La page du tournoi écarte deux
+            // catégories de son classement : celui qui est arrivé après le dernier
+            // match joué, et celui qui s'est endormi. On applique les mêmes règles,
+            // sinon la liste des tournois désignerait un meneur que la page du
+            // tournoi ne montre même pas.
+            DateTime dernierCoupDEnvoi = DateTime.MinValue;
+            foreach (var idMatch in matchsJoues)
+            {
+                if (coupsDEnvoi.ContainsKey(idMatch) && coupsDEnvoi[idMatch] > dernierCoupDEnvoi)
+                { dernierCoupDEnvoi = coupsDEnvoi[idMatch]; }
+            }
+
+            // Le sommeil, approché sans requête : n'a rien joué des trois derniers
+            // matchs du tournoi. La définition exacte porte sur les trois derniers
+            // matchs du PSG, toutes compétitions ; sur un cycle de cinq, les deux se
+            // rejoignent, et ce meneur-là n'aurait de toute façon pas marqué depuis
+            // longtemps.
+            var troisDerniers = matchsJoues
+                .Where(w => coupsDEnvoi.ContainsKey(w))
+                .OrderByDescending(o => coupsDEnvoi[o])
+                .Take(3)
+                .ToList();
+
+            var eligibles = new List<Guid>();
+            foreach (var membre in g.Members)
+            {
+                if (dernierCoupDEnvoi > DateTime.MinValue
+                    && !EtaitPresent(membre, dernierCoupDEnvoi)) { continue; }
+                if (troisDerniers.Count > 0
+                    && !predictions.Any(a => a.UserId.Equals(membre.UserId)
+                                          && troisDerniers.Contains(a.MatchId))) { continue; }
+                eligibles.Add(membre.UserId);
+            }
+
+            if (eligibles.Count == 0) { return null; }
+
+            // À égalité de points, la meilleure moyenne sur les matchs du tournoi.
+            Guid meilleur = Guid.Empty;
+            int meilleursPoints = -1;
+            double meilleureMoyenne = -1;
+            foreach (var m in eligibles)
+            {
+                int p = points[m];
+                var siennes = predictions
+                    .Where(w => w.UserId.Equals(m) && matchsJoues.Contains(w.MatchId))
+                    .Select(s => s.Note).ToList();
+                double moy = siennes.Count > 0 ? siennes.Average() : 0;
+
+                if (p > meilleursPoints || (p == meilleursPoints && moy > meilleureMoyenne))
+                {
+                    meilleur = m; meilleursPoints = p; meilleureMoyenne = moy;
+                }
+            }
+
+            if (meilleursPoints <= 0) { return null; }
+            var fiche = g.Members.FirstOrDefault(w => w.UserId.Equals(meilleur));
+            return fiche?.User?.DisplayName;
+        }
+
+        // La date à donner à un tournoi qui naît maintenant : celle qui fait
+        // commencer son cycle au premier match dont les prédictions sont encore
+        // ouvertes. Tant que la clôture du prochain match n'est pas passée, c'est
+        // simplement l'heure qu'il est.
+        private async Task<DateTime> PremierDepartOuvertAsync(DateTime maintenant)
+        {
+            var prochains = await dbContext.Matches
+                .Where(w => w.DateTime >= maintenant)
+                .OrderBy(o => o.DateTime)
+                .Select(sm => new { sm.DateTime })
+                .Take(2)
+                .ToListAsync();
+
+            if (prochains.Count == 0) { return maintenant; }
+
+            DateTime cloture = ParisToUtc(prochains[0].DateTime.AddHours(-ClotureAvantHeures));
+            if (maintenant < cloture) { return maintenant; }
+
+            // La porte du prochain match est déjà close : le tournoi démarre après
+            // lui. Une minute suffit à le placer du bon côté du calendrier.
+            // Cette date peut se trouver quelques heures dans l'avenir — le temps
+            // que le match se joue. Sans conséquence : le site ne l'affiche nulle
+            // part, il ne s'en sert que pour ranger les tournois par ancienneté.
+            return prochains[0].DateTime.AddMinutes(1);
         }
 
         public async Task<GroupResult> CreateAsync(Guid creatorId, CreateGroupInput input)
         {
             string src = "GroupService.CreateAsync";
-            if (StringHelper.IsNull(input.Name)) { throw BaseException.InvalidModel(-1, src); }
+            string type = NormalizeType(input.Type);
+
+            // Un tournoi peut naître sans nom : il prend alors son code, et son
+            // créateur le renommera s'il y tient (23 septembre 2026). Un kop, lui,
+            // porte toujours un nom choisi.
+            bool sansNom = StringHelper.IsNull(input.Name);
+            if (sansNom && IsKop(type)) { throw BaseException.InvalidModel(-1, src); }
 
             var creator = await dbContext.Users.FirstOrDefaultAsync(w => w.Id.Equals(creatorId));
             if (creator == null) { throw BaseException.NotFound(-2, src); }
 
-            string type = NormalizeType(input.Type);
-            string name = input.Name.Trim();
+            string name = sansNom ? "" : input.Name.Trim();
 
             if (IsKop(type))
             {
@@ -557,6 +860,20 @@ namespace dotnet.core.thegoldenfan.Services
             do { inviteCode = GenerateInviteCode(); }
             while (await dbContext.Groups.AnyAsync(w => w.InviteCode.Equals(inviteCode)));
 
+            if (sansNom) { name = inviteCode; }
+
+            // La date de naissance décide du cycle de cinq matchs, donc de la
+            // fenêtre d'inscription. Un tournoi créé une heure avant le coup d'envoi
+            // commencerait à ce match-là, dont les prédictions sont déjà closes :
+            // il naîtrait fermé, et son créateur y resterait seul cinq matchs
+            // durant. On le fait donc démarrer au premier match encore ouvert
+            // (23 septembre 2026). Sans effet sur les kops, qui n'ont pas de cycle.
+            DateTime naissance = DateTime.UtcNow;
+            if (!IsKop(type))
+            {
+                naissance = await PremierDepartOuvertAsync(naissance);
+            }
+
             var group = new Group
             {
                 Id = Guid.NewGuid(),
@@ -564,7 +881,7 @@ namespace dotnet.core.thegoldenfan.Services
                 InviteCode = inviteCode,
                 Type = type,
                 CreatorId = creatorId,
-                CreatedDate = DateTime.UtcNow
+                CreatedDate = naissance
             };
             dbContext.Groups.Add(group);
 
@@ -588,6 +905,33 @@ namespace dotnet.core.thegoldenfan.Services
                 CreatorId = group.CreatorId,
                 Type = group.Type
             };
+        }
+
+        // L'heure a laquelle un tournoi cree a cette date cesse d'accepter du monde :
+        // la cloture des predictions du premier match de son cycle courant. Renvoie
+        // null si le calendrier ne connait pas encore ce match.
+        private async Task<DateTime?> FermetureDesInscriptionsAsync(DateTime creation)
+        {
+            var aVenir = await dbContext.Matches
+                .Where(w => w.DateTime >= creation)
+                .OrderBy(o => o.DateTime)
+                .Select(s => new { s.Id, s.Status, s.DateTime })
+                .ToListAsync();
+
+            DateTime maintenant = DateTime.UtcNow;
+            int cycle = 0;
+            while (true)
+            {
+                var bloc = aVenir.Skip(cycle * SeasonLength).Take(SeasonLength).ToList();
+                if (bloc.Count < SeasonLength) { break; }
+                if (bloc.Any(a => !IsPlayed(a.Status))) { break; }
+                if (maintenant < bloc.Last().DateTime.AddHours(ChampionDisplayHours)) { break; }
+                cycle++;
+            }
+
+            var premier = aVenir.Skip(cycle * SeasonLength).Take(1).FirstOrDefault();
+            if (premier == null) { return null; }
+            return ParisToUtc(premier.DateTime.AddHours(-ClotureAvantHeures));
         }
 
         public async Task<GroupResult> JoinAsync(string inviteCode, Guid userId)
@@ -614,6 +958,19 @@ namespace dotnet.core.thegoldenfan.Services
             {
                 // Seuls les membres éveillés occupent une place (16 septembre 2026).
                 throw BaseException.InvalidModel(-4, src);
+            }
+
+            // La porte du tournoi (23 septembre 2026). Passé la clôture des
+            // prédictions du premier match du cycle, plus personne n'entre : celui
+            // qui arriverait après n'aurait aucune chance, et le classement
+            // mentirait sur ce qu'il mesure.
+            if (!IsKop(group.Type))
+            {
+                DateTime? ferme = await FermetureDesInscriptionsAsync(group.CreatedDate);
+                if (!ferme.HasValue || DateTime.UtcNow >= ferme.Value)
+                {
+                    throw BaseException.InvalidModel(-6, src);
+                }
             }
 
             dbContext.GroupMembers.Add(new GroupMember
