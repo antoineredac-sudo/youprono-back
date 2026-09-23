@@ -32,6 +32,15 @@ using (var scope = app.Services.CreateScope())
         db.Database.ExecuteSqlRaw(
             "ALTER TABLE \"Group\" ADD COLUMN IF NOT EXISTS \"Type\" character varying(20) NOT NULL DEFAULT 'amis';");
 
+        // Un tournoi ouvert figure dans la salle et se rejoint d'un doigt ; un
+        // tournoi prive ne s'y montre pas et n'accepte que ceux a qui son
+        // createur a envoye le code. DEFAULT false : tous les tournois nes avant
+        // cette version sont donc prives, ce qui est la seule reponse honnete --
+        // personne n'a consenti a les exposer a la salle entiere
+        // (23 septembre 2026).
+        db.Database.ExecuteSqlRaw(
+            "ALTER TABLE \"Group\" ADD COLUMN IF NOT EXISTS \"IsPublic\" boolean NOT NULL DEFAULT false;");
+
         // L'adresse e-mail. Nullable : les joueurs inscrits avant cette version
         // n'en ont pas, on la leur demandera a leur prochaine connexion.
         db.Database.ExecuteSqlRaw(
@@ -61,47 +70,6 @@ using (var scope = app.Services.CreateScope())
         // Le dernier match pour lequel le courriel de resultat est parti.
         db.Database.ExecuteSqlRaw(
             "ALTER TABLE \"User\" ADD COLUMN IF NOT EXISTS \"LastResultMatchId\" character varying(64);");
-
-        // Date d'envoi du courriel « YouProno devient The Golden Fan ».
-        db.Database.ExecuteSqlRaw(
-            "ALTER TABLE \"User\" ADD COLUMN IF NOT EXISTS \"AnnounceSentAt\" timestamp without time zone;");
-
-        // Le defi culture club de la treve (21 septembre 2026). La table nait au
-        // demarrage, comme les colonnes ci-dessus : aucune migration a jouer a la
-        // main, et un serveur neuf se retrouve complet tout seul.
-        db.Database.ExecuteSqlRaw(
-            "CREATE TABLE IF NOT EXISTS \"QuizAnswer\" (" +
-            "  \"Id\" uuid NOT NULL PRIMARY KEY," +
-            "  \"UserId\" uuid NOT NULL," +
-            "  \"QuestionId\" character varying(32) NOT NULL," +
-            "  \"StartedAt\" timestamp without time zone NOT NULL," +
-            "  \"AnsweredAt\" timestamp without time zone NULL," +
-            "  \"Choice\" integer NOT NULL DEFAULT -1," +
-            "  \"Correct\" boolean NOT NULL DEFAULT false," +
-            "  \"Points\" integer NOT NULL DEFAULT 0," +
-            "  \"TimeMs\" integer NOT NULL DEFAULT 0);");
-
-        db.Database.ExecuteSqlRaw(
-            "CREATE UNIQUE INDEX IF NOT EXISTS \"QuizAnswer_idx_userid_questionid01\" " +
-            "ON \"QuizAnswer\" (\"UserId\", \"QuestionId\");");
-
-        // Correction ponctuelle du 22 septembre 2026, 13 h 30.
-        // Le defi a gagne une journee, celle du 22 septembre, qui reprend les trois
-        // questions d'origine. Les joueurs qui y avaient deja repondu les avaient
-        // enregistrees sous les identifiants du 23, du temps ou la premiere journee
-        // etait ouverte en avance. On deplace leurs reponses vers le 22 : elles
-        // suivent la question a laquelle ils ont reellement repondu, et le 23 leur
-        // reste entier.
-        // La condition sur StartedAt protege ceux qui jouent depuis 13 h 07, heure
-        // a laquelle les nouvelles questions ont pris la place des anciennes sous
-        // les identifiants du 23 : leurs reponses-la ne bougent pas.
-        // L'instruction ne trouve plus rien une fois passee : elle peut tourner a
-        // chaque demarrage sans risque.
-        int quizDeplaces = db.Database.ExecuteSqlRaw(
-            "UPDATE \"QuizAnswer\" SET \"QuestionId\" = 'q20260922-' || right(\"QuestionId\", 1) " +
-            "WHERE \"QuestionId\" LIKE 'q20260923-%' " +
-            "AND \"StartedAt\" < TIMESTAMP '2026-09-22 11:05:00';");
-        Console.WriteLine("[quiz] reponses deplacees du 23 vers le 22 : " + quizDeplaces);
 
         // Correction ponctuelle : quelques joueurs n'ont qu'un nom d'usage et ont
         // ete enregistres avec le meme prenom et le meme nom — « Marquinhos
