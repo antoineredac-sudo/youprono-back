@@ -136,6 +136,57 @@ namespace dotnet.core.thegoldenfan.controllers
             return res;
         }
 
+        // Le createur inscrit un joueur du jeu a son tournoi.
+        [HttpPost("Inscrire/{groupId}/{parrainId}/{userId}")]
+        public async Task<ResponseModel<InscriptionResult>> InscrireAsync(
+            Guid groupId, Guid parrainId, Guid userId)
+        {
+            ResponseModel<InscriptionResult> res = ResponseModel<InscriptionResult>.CreateDefault();
+            try
+            {
+                var r = await service.InscrireAsync(groupId, parrainId, userId);
+                res = new ResponseModel<InscriptionResult>(0, r);
+            }
+            catch (Exception ex)
+            {
+                res = ResponseModel<InscriptionResult>.Exception(ex);
+            }
+            return res;
+        }
+
+        // Ce qu'on doit annoncer au joueur qui revient.
+        [HttpGet("Annonces/{userId}")]
+        public async Task<ResponseModel<List<AnnonceResult>>> AnnoncesAsync(Guid userId)
+        {
+            ResponseModel<List<AnnonceResult>> res = ResponseModel<List<AnnonceResult>>.CreateDefault();
+            try
+            {
+                var r = await service.AnnoncesAsync(userId);
+                res = new ResponseModel<List<AnnonceResult>>(0, r);
+            }
+            catch (Exception ex)
+            {
+                res = ResponseModel<List<AnnonceResult>>.Exception(ex);
+            }
+            return res;
+        }
+
+        [HttpPost("AnnonceVue/{userId}/{groupId}")]
+        public async Task<ResponseModel<bool>> AnnonceVueAsync(Guid userId, Guid groupId)
+        {
+            ResponseModel<bool> res = ResponseModel<bool>.CreateDefault();
+            try
+            {
+                var r = await service.AnnonceVueAsync(userId, groupId);
+                res = new ResponseModel<bool>(0, r);
+            }
+            catch (Exception ex)
+            {
+                res = ResponseModel<bool>.Exception(ex);
+            }
+            return res;
+        }
+
         [HttpGet("ByUserId/{userId}")]
         public async Task<ResponseModel<List<GroupResult>>> ByUserIdAsync(Guid userId)
         {
