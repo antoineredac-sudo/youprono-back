@@ -497,8 +497,7 @@ namespace dotnet.core.thegoldenfan.Services
         //     des soirs où il a joué.
         private const int MatchsManquesPourSommeil = 3;
 
-        private async Task<HashSet<Guid>> MembresEnSommeilAsync(
-            IEnumerable<GroupMember> membres, Group? tournoi = null)
+        private async Task<HashSet<Guid>> MembresEnSommeilAsync(IEnumerable<GroupMember> membres)
         {
             var liste = membres.ToList();
             var dormeurs = new HashSet<Guid>();
@@ -556,25 +555,34 @@ namespace dotnet.core.thegoldenfan.Services
                 if (!derniers.Any(id => sesPronos.Contains(id))) { dormeurs.Add(m.UserId); }
             }
 
-            // Ce qui est constaté est consigné : le sommeil devient l'exclusion.
-            // Deux exemptions. Le créateur, qui reste le gardien de la table --
-            // sans lui, un tournoi où tout le monde s'endort se refermerait sur
-            // lui-même, sans personne pour réinviter ni pour lire le code. Et les
-            // kops, qui ne sont pas des tournois : on n'exclut pas un supporter
-            // d'un club de supporters parce qu'il a sauté trois matchs. Là, le
-            // sommeil reste ce qu'il était -- réversible, et de simple affichage.
-            var nouveaux = (tournoi == null || IsKop(tournoi.Type))
-                ? new List<GroupMember>()
-                : liste
-                    .Where(w => dormeurs.Contains(w.UserId)
-                             && !w.ExcludedDate.HasValue
-                             && !w.UserId.Equals(tournoi.CreatorId))
-                    .ToList();
-            if (nouveaux.Count > 0)
+            return dormeurs;
+        }
+
+        // Le sommeil constaté est consigné : le membre sort du tournoi pour de
+        // bon (23 septembre 2026). On l'appelle là où l'on a le tournoi complet
+        // sous la main, et il rend la même liste que MembresEnSommeilAsync pour
+        // que l'appelant n'ait pas à la redemander.
+        //
+        // Deux exemptions. Le créateur, qui reste le gardien de la table : sans
+        // lui, un tournoi où tout le monde s'endort se refermerait sur lui-même,
+        // sans personne pour réinviter ni pour lire le code. Et les kops, qui ne
+        // sont pas des tournois -- on n'exclut pas un supporter d'un club de
+        // supporters parce qu'il a sauté trois matchs.
+        private async Task<HashSet<Guid>> ExclureLesDormeursAsync(Group tournoi)
+        {
+            HashSet<Guid> dormeurs = await MembresEnSommeilAsync(tournoi.Members);
+            if (IsKop(tournoi.Type)) { return dormeurs; }
+
+            int combien = 0;
+            foreach (GroupMember membre in tournoi.Members)
             {
-                foreach (var sortant in nouveaux) { sortant.ExcludedDate = DateTime.UtcNow; }
-                await dbContext.SaveChangesAsync();
+                if (!dormeurs.Contains(membre.UserId)) { continue; }
+                if (membre.ExcludedDate.HasValue) { continue; }
+                if (membre.UserId.Equals(tournoi.CreatorId)) { continue; }
+                membre.ExcludedDate = DateTime.UtcNow;
+                combien = combien + 1;
             }
+            if (combien > 0) { await dbContext.SaveChangesAsync(); }
             return dormeurs;
         }
 
@@ -744,7 +752,7 @@ namespace dotnet.core.thegoldenfan.Services
                     // sur un tournoi ouvert, où il libère une place. Il coûte trois
                     // requêtes, autant ne pas les payer pour une ligne qu'on ne peut
                     // plus rejoindre de toute façon.
-                    var dormeurs = await MembresEnSommeilAsync(g.Members, g);
+                    var dormeurs = await MembresEnSommeilAsync(g.Members);
                     ligne.Full = g.Members.Count(m => !dormeurs.Contains(m.UserId)) >= MaxMembers;
                 }
                 else if (joues[g.Id].Count > 0)
@@ -1018,7 +1026,7 @@ namespace dotnet.core.thegoldenfan.Services
                 await EnsureNoOtherKopAsync(userId, src);
             }
             else if (group.Members.Count
-                     - (await MembresEnSommeilAsync(group.Members, group)).Count >= MaxMembers)
+                     - (await MembresEnSommeilAsync(group.Members)).Count >= MaxMembers)
             {
                 // Seuls les membres éveillés occupent une place (16 septembre 2026).
                 throw BaseException.InvalidModel(-4, src);
@@ -1117,7 +1125,7 @@ namespace dotnet.core.thegoldenfan.Services
             if (ancienne != null && !ancienne.ExcludedDate.HasValue)
             { throw BaseException.AlreadyInDb(-5, src); }
 
-            var dormeurs = await MembresEnSommeilAsync(group.Members, group);
+            var dormeurs = await ExclureLesDormeursAsync(group);
             if (group.Members.Count - dormeurs.Count >= MaxMembers)
             { throw BaseException.InvalidModel(-6, src); }
 
@@ -1290,7 +1298,7 @@ namespace dotnet.core.thegoldenfan.Services
 
             // Les membres exclus sont retirés de la liste affichée, pas du calcul :
             // leurs anciennes places restent celles des soirs où ils ont joué.
-            var dormeurs = await MembresEnSommeilAsync(group.Members, group);
+            var dormeurs = await ExclureLesDormeursAsync(group);
 
             // On récupère la note DU MATCH (ResultTotal), et non la moyenne de saison
             // (ResultFinalTotal), qui ne sert ici qu'à départager les ex aequo.
@@ -2949,7 +2957,7 @@ namespace dotnet.core.thegoldenfan.Services
 
             int endormis = IsKop(group.Type)
                 ? 0
-                : (await MembresEnSommeilAsync(group.Members, group)).Count;
+                : (await MembresEnSommeilAsync(group.Members)).Count;
 
             return new GroupByCodeResult
             {
