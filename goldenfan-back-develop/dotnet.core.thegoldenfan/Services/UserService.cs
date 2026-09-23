@@ -1543,7 +1543,7 @@ namespace dotnet.core.thegoldenfan.Services
               + PARA + "Passe en mode tournoi et d&eacute;couvre une nouvelle fa&ccedil;on "
               + "de jouer en d&eacute;fiant tes amis sur WhatsApp, sur X ou parmi les "
               + "membres du jeu.</p>"
-              + BoutonHtml("https://thegoldenfan.fr/#creer-groupe",
+              + BoutonHtml("https://thegoldenfan.fr/#tournois",
                            "Cr&eacute;er ou rejoindre un tournoi", false, false)
 
               + "<p style=\"font-family:" + POLICE + ";font-size:16px;line-height:1.7;"
@@ -1560,7 +1560,7 @@ namespace dotnet.core.thegoldenfan.Services
               + "Mon resultat : https://thegoldenfan.fr/#results\n\n"
               + "Passe en mode tournoi et decouvre une nouvelle facon de jouer en defiant "
               + "tes amis sur WhatsApp, sur X ou parmi les membres du jeu.\n\n"
-              + "Creer ou rejoindre un tournoi : https://thegoldenfan.fr/#creer-groupe\n\n"
+              + "Creer ou rejoindre un tournoi : https://thegoldenfan.fr/#tournois\n\n"
               + "Allez Paris\n\n"
               + "@thegoldenfan\n\n"
               + "---\n"
