@@ -1,4 +1,4 @@
-﻿using dotnet.core.thegoldenfan.Dbs;
+using dotnet.core.thegoldenfan.Dbs;
 using dotnet.core.thegoldenfan.Services.Opta;
 using dotnet.core.utils;
 using dotnet.core.utils.server.Helpers;
@@ -947,6 +947,9 @@ namespace dotnet.core.thegoldenfan.Services
             public bool Ranked { get; set; } = true;
             public int AttendancePlayed { get; set; }
             public int AttendanceTotal { get; set; }
+
+            // Combien des vingt-quatre badges de la vitrine il a decroches.
+            public int Badges { get; set; }
         }
 
         // Le dernier match note de l'equipe. Il sert a reconstituer le classement
@@ -1337,6 +1340,165 @@ namespace dotnet.core.thegoldenfan.Services
             return res;
         }
 
+        // ===== LES BADGES DE LA VITRINE =====
+        // Vingt-quatre badges : vingt se lisent sur les notes d'un seul match,
+        // quatre recompensent une serie. Le site les calcule deja sur sa page
+        // « Mes badges », mais il lui faut une requete par match du joueur --
+        // tenable pour un joueur, pas pour une liste de soixante.
+        //
+        // ATTENTION : ces seuils sont ceux de la constante BADGES du site. S'ils
+        // changent la-bas, ils doivent changer ici, sinon le classement et la
+        // vitrine ne diront plus la meme chose.
+        private sealed class SeuilBadge
+        {
+            public string Categorie { get; init; } = "";
+            public double Min { get; init; }
+        }
+
+        private static readonly SeuilBadge[] BADGES_SUR_UN_MATCH =
+        {
+            new() { Categorie = "composition", Min = 81.8 },
+            new() { Categorie = "composition", Min = 90.9 },
+            new() { Categorie = "composition", Min = 99.9 },
+            new() { Categorie = "score",       Min = 99.9 },
+            new() { Categorie = "total",       Min = 80   },
+            new() { Categorie = "total",       Min = 85   },
+            new() { Categorie = "total",       Min = 90   },
+            new() { Categorie = "total",       Min = 95   },
+            new() { Categorie = "possession",  Min = 90   },
+            new() { Categorie = "shots",       Min = 90   },
+            new() { Categorie = "fouls",       Min = 90   },
+            new() { Categorie = "crosses",     Min = 90   },
+            new() { Categorie = "possession",  Min = 94   },
+            new() { Categorie = "shots",       Min = 94   },
+            new() { Categorie = "fouls",       Min = 94   },
+            new() { Categorie = "crosses",     Min = 94   },
+            new() { Categorie = "possession",  Min = 98   },
+            new() { Categorie = "shots",       Min = 98   },
+            new() { Categorie = "fouls",       Min = 98   },
+            new() { Categorie = "crosses",     Min = 98   }
+        };
+
+        // La marge du site, reprise telle quelle : une note de 81.8 doit decrocher
+        // le badge a 81.8, sans se faire recaler par un arrondi.
+        private const double BADGE_MARGE = 0.001;
+
+        private sealed class LigneBadge
+        {
+            public Guid UserId { get; set; }
+            public string MatchId { get; set; } = "";
+            public DateTime Quand { get; set; }
+            public double? Note { get; set; }
+            public double? Composition { get; set; }
+            public double? Score { get; set; }
+            public double? Possession { get; set; }
+            public double? Shots { get; set; }
+            public double? Fouls { get; set; }
+            public double? Crosses { get; set; }
+
+            public double? Valeur(string categorie) => categorie switch
+            {
+                "composition" => Composition,
+                "score"       => Score,
+                "possession"  => Possession,
+                "shots"       => Shots,
+                "fouls"       => Fouls,
+                "crosses"     => Crosses,
+                "total"       => Note,
+                _             => null
+            };
+        }
+
+        private async Task<Dictionary<Guid, int>> CompterBadgesAsync(string teamId)
+        {
+            var res = new Dictionary<Guid, int>();
+
+            var lignes = await dbContext.UserMatches
+                .Where(w => w.TeamId.Equals(teamId))
+                .Select(s => new LigneBadge
+                {
+                    UserId      = s.UserId,
+                    MatchId     = s.MatchId,
+                    Quand       = s.Match.DateTime,
+                    Note        = s.ResultTotal,
+                    Composition = s.ResultTeamCompositionFormula,
+                    Score       = s.ResultTeamScoreFormula,
+                    Possession  = s.ResultTeamPossessionFormula,
+                    Shots       = s.ResultTeamShotsFormula,
+                    Fouls       = s.ResultTeamFoulsFormula,
+                    Crosses     = s.ResultTeamCrossesFormula
+                })
+                .ToListAsync();
+
+            if (lignes.Count == 0) { return res; }
+
+            // Les matchs deja commences, dans l'ordre : c'est sur cette suite que
+            // se lisent les series. On la tire des pronostics eux-memes plutot que
+            // du calendrier -- un match du PSG sans un seul joueur n'existe pas.
+            DateTime maintenantParis = TimeZoneInfo.ConvertTimeFromUtc(
+                DateTime.UtcNow, GroupService.ParisTimeZoneInfo);
+
+            var matchs = lignes
+                .Where(w => w.Quand <= maintenantParis)
+                .GroupBy(g => g.MatchId)
+                .Select(g => new { Id = g.Key, Quand = g.Min(m => m.Quand) })
+                .OrderBy(o => o.Quand)
+                .Select(s => s.Id)
+                .ToList();
+
+            foreach (var joueur in lignes.GroupBy(g => g.UserId))
+            {
+                var siennes = joueur.ToList();
+                int compte = 0;
+
+                // Les vingt badges de performance : un badge est acquis des qu'un
+                // seul match atteint son seuil.
+                foreach (var b in BADGES_SUR_UN_MATCH)
+                {
+                    bool acquis = siennes.Any(l =>
+                    {
+                        var v = l.Valeur(b.Categorie);
+                        return v.HasValue && v.Value >= b.Min - BADGE_MARGE;
+                    });
+                    if (acquis) { compte++; }
+                }
+
+                // « 1re prediction » : elle se merite des l'enregistrement, sans
+                // attendre que le match soit joue ni note.
+                if (siennes.Count > 0) { compte++; }
+
+                // Les trois series. Un match manque casse la suite ; un match joue
+                // mais pas encore note ne casse que la serie des notes a 80.
+                var joues = siennes.Select(s => s.MatchId).ToHashSet();
+                var notes = siennes.Where(w => w.Note.HasValue)
+                                   .GroupBy(g => g.MatchId)
+                                   .ToDictionary(g => g.Key, g => g.First().Note!.Value);
+
+                int suite = 0, meilleure = 0, suite80 = 0, meilleure80 = 0;
+                foreach (var id in matchs)
+                {
+                    bool aJoue = joues.Contains(id);
+                    if (aJoue) { suite++; if (suite > meilleure) { meilleure = suite; } }
+                    else { suite = 0; }
+
+                    if (!aJoue) { suite80 = 0; }
+                    else if (notes.TryGetValue(id, out double note))
+                    {
+                        if (note >= 80) { suite80++; if (suite80 > meilleure80) { meilleure80 = suite80; } }
+                        else { suite80 = 0; }
+                    }
+                }
+
+                if (meilleure >= 5)   { compte++; }
+                if (meilleure >= 10)  { compte++; }
+                if (meilleure80 >= 3) { compte++; }
+
+                res[joueur.Key] = compte;
+            }
+
+            return res;
+        }
+
         public async Task<List<UserRanking>> RankingByResultFinalTotalAsync(string teamId)
         {
             var enMemoire = LireMemoire("expert:" + teamId);
@@ -1387,6 +1549,12 @@ namespace dotnet.core.thegoldenfan.Services
             }
 
             res = AppliquerSeuil(res, await userService.EligibiliteAllAsync(teamId));
+
+            var badges = await CompterBadgesAsync(teamId);
+            foreach (var r in res)
+            {
+                if (badges.TryGetValue(r.Id, out int n)) { r.Badges = n; }
+            }
 
             EcrireMemoire("expert:" + teamId, res);
             return res;
