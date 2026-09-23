@@ -328,7 +328,7 @@ namespace dotnet.core.thegoldenfan.Services
               + "par des supporters du PSG depuis de longues ann&eacute;es.</p>"
 
               + "<p style=\"font-family:" + POLICE + ";font-size:16px;line-height:1.7;"
-              + "color:" + C_OR + ";margin:22px 0 0;font-weight:bold;\">Bons pronos et Allez Paris</p>";
+              + "color:" + C_OR + ";margin:22px 0 0;font-weight:bold;\">Bonnes prédictions et Allez Paris</p>";
 
             string corps = CadreHtml("Bienvenue", contenu, lienStop);
 
@@ -345,8 +345,8 @@ namespace dotnet.core.thegoldenfan.Services
               + "donner une note.\n\n"
               + "The Golden Fan est un jeu gratuit et sans publicite cree par des supporters du PSG "
               + "depuis de longues annees.\n\n"
-              + "Bons pronos et Allez Paris\n\n"
-              + "@lepsgdantoine\n\n"
+              + "Bonnes prédictions et Allez Paris\n\n"
+              + "@thegoldenfan\n\n"
               + "---\n"
               + "Ne plus recevoir de rappel avant match : " + lienStop;
 
@@ -860,7 +860,7 @@ namespace dotnet.core.thegoldenfan.Services
               "<tr><td style=\"background:" + C_BANDE + ";border-top:1px solid " + C_BORD + ";"
             + "padding:18px 24px;text-align:center;\">"
             + "<div style=\"font-family:" + POLICE + ";font-size:14px;color:" + C_OR + ";"
-            + "font-weight:bold;\">@lepsgdantoine</div>"
+            + "font-weight:bold;\">@thegoldenfan</div>"
             + "<div style=\"font-family:" + POLICE + ";font-size:11px;color:#8b99d0;"
             + "margin-top:10px;line-height:1.6;\">"
             + "<a href=\"" + lienStop + "\" style=\"color:#8b99d0;\">Ne plus recevoir de rappel "
@@ -1064,7 +1064,7 @@ namespace dotnet.core.thegoldenfan.Services
             // seulement pour celui qui a deja pronostique.
             // Une seule version desormais : ce message ne part qu'a ceux qui n'ont
             // pas encore pronostique.
-            string libelleBouton = aDejaJoue ? "Modifier mes pronos" : "JOUER";
+            string libelleBouton = aDejaJoue ? "Modifier mes prédictions" : "JOUER";
 
             // Celui qui a deja joue : on ne lui redemande pas de jouer, on lui donne
             // une raison de revenir. Le groupe et les compos probables sortent le
@@ -1076,9 +1076,9 @@ namespace dotnet.core.thegoldenfan.Services
                   + "presse. C'est peut-&ecirc;tre le moment de v&eacute;rifier si tu as choisi la bonne compo."
                 // Texte d'Antoine du 19 septembre 2026 : le matin du match, celui qui
                 // n'a pas joue n'est pas en retard, il a attendu les infos.
-                : "Tu as bien fait d'attendre le dernier jour avant de faire tes pronos, "
+                : "Tu as bien fait d'attendre le dernier jour avant de faire tes prédictions, "
                   + "d&eacute;sormais tu connais les joueurs bless&eacute;s et les compositions "
-                  + "probables selon la presse. C'est le bon moment pour faire tes pronos.";
+                  + "probables selon la presse. C'est le bon moment pour faire tes prédictions.";
 
             string contenu =
                 PARA + "Salut " + nom + ",</p>"
@@ -1090,18 +1090,18 @@ namespace dotnet.core.thegoldenfan.Services
               // de suite sous le texte, l'affiche ensuite (19 septembre 2026).
               + (aDejaJoue
                  ? BlocMatchHtml(System.Net.WebUtility.HtmlEncode(affiche),
-                       "Coup d'envoi &agrave; " + heureMatch + " &middot; pronos ferm&eacute;s &agrave; "
+                       "Coup d'envoi &agrave; " + heureMatch + " &middot; pr&eacute;dictions ferm&eacute;es &agrave; "
                      + heureCloture)
-                   + PARA + "Tu peux modifier tes pronos jusqu'&agrave; " + heureCloture + ".</p>"
+                   + PARA + "Tu peux modifier tes pr&eacute;dictions jusqu'&agrave; " + heureCloture + ".</p>"
                    + BoutonHtml("https://thegoldenfan.fr", libelleBouton, false, false)
                  : BoutonHtml("https://thegoldenfan.fr", libelleBouton, false, false)
                    + BlocMatchHtml(System.Net.WebUtility.HtmlEncode(affiche),
-                       "Coup d'envoi &agrave; " + heureMatch + " &middot; pronos ferm&eacute;s &agrave; "
+                       "Coup d'envoi &agrave; " + heureMatch + " &middot; pr&eacute;dictions ferm&eacute;es &agrave; "
                      + heureCloture))
 
               + "<p style=\"font-family:" + POLICE + ";font-size:16px;line-height:1.7;"
               + "color:" + C_OR + ";margin:22px 0 0;font-weight:bold;\">"
-              + "Bons pronos, bon match et surtout Allez Paris</p>";
+              + "Bonnes pr&eacute;dictions, bon match et surtout Allez Paris</p>";
 
             string corps = CadreHtml("Jour de match", contenu, lienStop);
 
@@ -1112,15 +1112,15 @@ namespace dotnet.core.thegoldenfan.Services
                     + " et les compos probables de la presse. C'est peut-etre le moment "
                     + "de verifier si tu as choisi la bonne compo. Tu peux les modifier jusqu'a "
                     + heureCloture + "."
-                  : "Tu as bien fait d'attendre le dernier jour avant de faire tes pronos, "
+                  : "Tu as bien fait d'attendre le dernier jour avant de faire tes predictions, "
                     + "desormais tu connais les joueurs blesses et les compositions probables "
-                    + "selon la presse. C'est le bon moment pour faire tes pronos.\n\n"
-                    + affiche + " - coup d'envoi a " + heureMatch + ", pronos fermes a "
+                    + "selon la presse. C'est le bon moment pour faire tes predictions.\n\n"
+                    + affiche + " - coup d'envoi a " + heureMatch + ", predictions fermees a "
                     + heureCloture + ".")
               + "\n\n"
               + "https://thegoldenfan.fr\n\n"
-              + "Bons pronos, bon match et surtout Allez Paris\n\n"
-              + "@lepsgdantoine\n\n"
+              + "Bonnes predictions, bon match et surtout Allez Paris\n\n"
+              + "@thegoldenfan\n\n"
               + "---\n"
               + "Ne plus recevoir de rappel avant match : " + lienStop;
 
@@ -1132,7 +1132,7 @@ namespace dotnet.core.thegoldenfan.Services
                 // L'affiche d'abord, l'appel ensuite : c'est le nom du match qui
                 // accroche un supporter dans une liste de messages.
                 subject = aDejaJoue
-                    ? AfficheCourte(affiche) + ", tu peux changer tes pronos avant " + heureCloture
+                    ? AfficheCourte(affiche) + ", tu peux changer tes predictions avant " + heureCloture
                     : AfficheCourte(affiche) + " : à toi de jouer",
                 htmlContent = corps,
                 textContent = texteBrut,
@@ -1435,10 +1435,10 @@ namespace dotnet.core.thegoldenfan.Services
               + "Ce n'est pas une note &eacute;liminatoire : pr&egrave;s d'un joueur sur trois "
               + "a fait moins bien en ayant jou&eacute;.</p>"
 
-              + PARA + "Les pronos pour le prochain match sont ouverts, tu vas pouvoir prendre "
+              + PARA + "Les pr&eacute;dictions pour le prochain match sont ouvertes, tu vas pouvoir prendre "
               + "ta revanche.</p>"
 
-              + BoutonHtml("https://thegoldenfan.fr", "Je fais mes pronos", false, false)
+              + BoutonHtml("https://thegoldenfan.fr", "Je fais mes pr&eacute;dictions", false, false)
 
               + "<p style=\"font-family:" + POLICE + ";font-size:16px;line-height:1.7;"
               + "color:" + C_OR + ";margin:22px 0 0;font-weight:bold;\">Allez Paris</p>";
@@ -1451,11 +1451,11 @@ namespace dotnet.core.thegoldenfan.Services
               + "note en dessous de la note moyenne obtenue par l'ensemble des participants : " + noteTexte
               + ". Elle entre dans ton Coef Expert comme une vraie note. Ce n'est pas une note "
               + "eliminatoire : pres d'un joueur sur trois a fait moins bien en ayant joue.\n\n"
-              + "Les pronos pour le prochain match sont ouverts, tu vas pouvoir prendre ta "
+              + "Les predictions pour le prochain match sont ouvertes, tu vas pouvoir prendre ta "
               + "revanche.\n\n"
               + "https://thegoldenfan.fr\n\n"
               + "Allez Paris\n\n"
-              + "@lepsgdantoine\n\n"
+              + "@thegoldenfan\n\n"
               + "---\n"
               + "Ne plus recevoir de rappel avant match : " + lienStop;
 
@@ -1557,7 +1557,7 @@ namespace dotnet.core.thegoldenfan.Services
               + "Si tu as envie de te confronter a tes amis lors du prochain match, invite-les sur WhatsApp.\n\n"
               + "Creer un groupe : https://thegoldenfan.fr/#creer-groupe\n\n"
               + "Allez Paris\n\n"
-              + "@lepsgdantoine\n\n"
+              + "@thegoldenfan\n\n"
               + "---\n"
               + "Ne plus recevoir de rappel avant match : " + lienStop;
 
@@ -1907,7 +1907,7 @@ namespace dotnet.core.thegoldenfan.Services
             if (pronos > 0)
             {
                 throw new BaseException(-4, src,
-                    user.DisplayName + " a enregistré " + pronos + " pronostic(s) : ce compte a joué, "
+                    user.DisplayName + " a enregistré " + pronos + " prédiction(s) : ce compte a joué, "
                     + "il n'est pas supprimé. Rien n'a été modifié.");
             }
 
