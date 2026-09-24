@@ -19,11 +19,6 @@ public partial class GroupMember
     // Vrai des qu'on le lui a dit. Le bandeau d'annonce ne se montre qu'une fois.
     public bool NoticeSeen { get; set; }
 
-    // Le jour ou il a ete exclu pour avoir manque trois matchs de suite
-    // (23 septembre 2026). Vide tant qu'il est a la table. Une reinvitation
-    // efface cette date : on ne cree pas une seconde ligne pour le meme joueur.
-    public DateTime? ExcludedDate { get; set; }
-
     public virtual Group Group { get; set; } = null!;
 
     public virtual User User { get; set; } = null!;
