@@ -51,6 +51,8 @@ public partial class AppDbContext : DbContext
 
     public virtual DbSet<UserPlayerForMatch> UserPlayerForMatches { get; set; }
 
+    public virtual DbSet<QuizAnswer> QuizAnswers { get; set; }
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.HasPostgresExtension("uuid-ossp");
@@ -455,6 +457,22 @@ public partial class AppDbContext : DbContext
             entity.Property(e => e.WelcomeTries);
             entity.Property(e => e.LastReminderMatchId).HasMaxLength(64);
             entity.Property(e => e.LastResultMatchId).HasMaxLength(64);
+            entity.Property(e => e.AnnounceSentAt);
+        });
+
+        // Le defi culture club de la treve. Une ligne par joueur et par question.
+        modelBuilder.Entity<QuizAnswer>(entity =>
+        {
+            entity.HasKey(e => e.Id).HasName("quizanswer_pkey");
+
+            entity.ToTable("QuizAnswer");
+
+            entity.HasIndex(e => new { e.UserId, e.QuestionId }, "QuizAnswer_idx_userid_questionid01").IsUnique();
+
+            entity.Property(e => e.Id).ValueGeneratedNever();
+            entity.Property(e => e.QuestionId).HasMaxLength(32);
+            entity.Property(e => e.StartedAt).HasColumnType("timestamp without time zone");
+            entity.Property(e => e.AnsweredAt).HasColumnType("timestamp without time zone");
         });
 
         modelBuilder.Entity<UserMatch>(entity =>
@@ -533,9 +551,6 @@ public partial class AppDbContext : DbContext
 
             entity.Property(e => e.Id).ValueGeneratedNever();
             entity.Property(e => e.DateJoined).HasColumnType("timestamp without time zone");
-            // L'exclusion apres trois matchs sans jouer (23 septembre 2026).
-            // Meme type que DateJoined : toute la base est sans fuseau.
-            entity.Property(e => e.ExcludedDate).HasColumnType("timestamp without time zone");
 
             entity.HasOne(d => d.Group).WithMany(p => p.Members)
                 .HasForeignKey(d => d.GroupId)
