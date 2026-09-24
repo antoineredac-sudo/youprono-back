@@ -317,15 +317,6 @@ namespace dotnet.core.thegoldenfan.Services
         private const int QUIZ_TOLERANCE_MS = 1500;
         private static readonly DateTime QUIZ_CLOTURE_PARIS = new DateTime(2026, 10, 4, 18, 0, 0);
 
-        // Les comptes qui jouent le defi sans figurer au classement ni au tirage
-        // au sort du T-shirt (24 septembre 2026) : le compte « Antoine » de
-        // l'organisateur. Ses reponses restent enregistrees ; il n'est simplement
-        // pas classe.
-        private static readonly Guid[] QUIZ_HORS_CLASSEMENT = new Guid[]
-        {
-            new Guid("133992b2-aa29-4697-bf2b-f5c2d5a425f1")
-        };
-
         private sealed class QuizQuestion
         {
             public string Jour { get; set; } = "";      // "2026-09-23"
@@ -707,7 +698,7 @@ namespace dotnet.core.thegoldenfan.Services
         public async Task<QuizClassementResult> QuizClassementAsync(Guid userId, int limit = 20)
         {
             var brut = await dbContext.QuizAnswers
-                .Where(w => w.AnsweredAt.HasValue && !QUIZ_HORS_CLASSEMENT.Contains(w.UserId))
+                .Where(w => w.AnsweredAt.HasValue)
                 .GroupBy(g => g.UserId)
                 .Select(s => new
                 {
@@ -1111,7 +1102,6 @@ namespace dotnet.core.thegoldenfan.Services
             // Le classement, dans l'ordre du jeu : les points d'abord, le temps
             // total pour departager.
             var parJoueur = reponses
-                .Where(w => !QUIZ_HORS_CLASSEMENT.Contains(w.UserId))
                 .GroupBy(g => g.UserId)
                 .Select(s => new QuizConsoleJoueur
                 {
