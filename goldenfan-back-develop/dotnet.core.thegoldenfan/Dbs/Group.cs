@@ -24,6 +24,11 @@ public partial class Group
 
     public DateTime CreatedDate { get; set; }
 
+    // Le tournoi termine dont celui-ci est la relance (25 septembre 2026). Nul
+    // pour tous les autres. Sert a savoir qu'un tournoi a deja ete relance, et a
+    // annoncer la relance a ses membres plutot qu'une simple inscription.
+    public Guid? RelaunchedFromId { get; set; }
+
     public virtual User Creator { get; set; } = null!;
 
     public virtual ICollection<GroupMember> Members { get; } = new List<GroupMember>();
