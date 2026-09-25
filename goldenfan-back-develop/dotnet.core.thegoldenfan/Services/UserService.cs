@@ -551,8 +551,8 @@ namespace dotnet.core.thegoldenfan.Services
               + PARA + "The Golden Fan active le mode tournoi : de 2 &agrave; 11 joueurs, 5 matchs, "
               + "1 vainqueur, et des troph&eacute;es &agrave; d&eacute;bloquer pour les meilleurs.</p>"
 
-              + PARA + "Cr&eacute;e ton tournoi priv&eacute; d&egrave;s maintenant et invite tes amis "
-              + "supporters. Tu peux aussi rejoindre des tournois publics pour affronter les autres "
+              + PARA + "Cr&eacute;e ton tournoi priv&eacute; et invite tes amis "
+              + "supporters du PSG. Tu peux aussi cr&eacute;er ou rejoindre des tournois publics pour affronter les autres "
               + "membres du jeu.</p>"
 
               + "<a href=\"https://thegoldenfan.fr/#tournois\" style=\"text-decoration:none;\">"
@@ -561,8 +561,8 @@ namespace dotnet.core.thegoldenfan.Services
               + "style=\"display:block;margin:6px auto 22px;border:1px solid " + C_BORD + ";"
               + "border-radius:12px;width:300px;max-width:85%;height:auto;\"></a>"
 
-              + PARA + "Les inscriptions restent ouvertes jusqu'&agrave; la cl&ocirc;ture des "
-              + "pr&eacute;dictions du prochain match du PSG, <span style=\"white-space:nowrap;"
+              + PARA + "Les personnes invit&eacute;es peuvent rejoindre le tournoi jusqu'&agrave; la cl&ocirc;ture des "
+              + "pr&eacute;dictions du prochain match du PSG, le <span style=\"white-space:nowrap;"
               + "font-weight:bold;color:" + C_OR + ";\">samedi 10 octobre &agrave; 15:00</span>.</p>"
 
               + BoutonHtml("https://thegoldenfan.fr/#tournois", "CR&Eacute;ER OU REJOINDRE UN TOURNOI", false, false)
@@ -580,10 +580,10 @@ namespace dotnet.core.thegoldenfan.Services
                 "Salut " + pseudo + ",\n\n"
               + "The Golden Fan active le mode tournoi : de 2 a 11 joueurs, 5 matchs, 1 vainqueur, "
               + "et des trophees a debloquer pour les meilleurs.\n\n"
-              + "Cree ton tournoi prive des maintenant et invite tes amis supporters. Tu peux aussi "
-              + "rejoindre des tournois publics pour affronter les autres membres du jeu.\n\n"
-              + "Les inscriptions restent ouvertes jusqu'a la cloture des predictions du prochain "
-              + "match du PSG, samedi 10 octobre a 15:00.\n\n"
+              + "Cree ton tournoi prive et invite tes amis supporters du PSG. Tu peux aussi "
+              + "creer ou rejoindre des tournois publics pour affronter les autres membres du jeu.\n\n"
+              + "Les personnes invitees peuvent rejoindre le tournoi jusqu'a la cloture des predictions "
+              + "du prochain match du PSG, le samedi 10 octobre a 15:00.\n\n"
               + "Creer ou rejoindre un tournoi : https://thegoldenfan.fr/#tournois\n\n"
               + "Et bien sur, les predictions pour PSG - Le Mans sont deja ouvertes.\n\n"
               + "Bonnes predictions, et allez Paris !\n\n"
