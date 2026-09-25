@@ -30,6 +30,16 @@ namespace dotnet.core.thegoldenfan.Services
         // et non sur la taille du groupe, ce plafond ne change aucun seuil de ballon.
         private const int MaxMembers = 11;
 
+        // Cinq tournois publics au plus en meme temps, aucune limite aux
+        // tournois prives (Antoine, 25 septembre 2026). Une prediction vaut pour
+        // tous les tournois a la fois : sans plafond, un bon joueur s'inscrirait
+        // dans toute la salle publique et viderait les trophees de leur sens.
+        // Les prives restent libres parce que ce sont eux qui font venir des
+        // gens de l'exterieur. Personne n'est exclu d'un tournoi ou il est
+        // deja : le plafond ne joue qu'a l'entree.
+        private const int MaxTournoisPublics = 5;
+        public const int CodePlafondPublic = -20;
+
         // Un mini-championnat dure 5 matchs du PSG, toutes compétitions confondues.
         private const int SeasonLength = 5;
 
@@ -110,6 +120,46 @@ namespace dotnet.core.thegoldenfan.Services
             if (string.Equals(t, TypeKopMedia, StringComparison.OrdinalIgnoreCase)) { return TypeKopMedia; }
             if (string.Equals(t, TypeKop, StringComparison.OrdinalIgnoreCase)) { return TypeKop; }
             return TypeAmis;
+        }
+
+        private async Task VerifierPlafondAsync(Guid userId, bool estPublic, string src)
+        {
+            if (!estPublic) { return; }
+            int deja = await dbContext.GroupMembers
+                .CountAsync(m => m.UserId.Equals(userId)
+                              && m.Group.Type.Equals(TypeAmis)
+                              && m.Group.IsPublic);
+            if (deja >= MaxTournoisPublics)
+            {
+                throw BaseException.InvalidModel(CodePlafondPublic, src);
+            }
+        }
+
+        // Le nombre de matchs deja joues dans le cycle en cours d'un tournoi.
+        // Meme decoupage en blocs de cinq que partout ailleurs : on passe au
+        // bloc suivant quand le precedent est complet et que les vingt-quatre
+        // heures d'affichage du vainqueur sont ecoulees.
+        private async Task<int> MatchsJouesDuCycleAsync(DateTime creation)
+        {
+            var aVenir = await dbContext.Matches
+                .Where(w => w.DateTime >= creation)
+                .OrderBy(o => o.DateTime)
+                .Select(s => new { s.Id, s.Status, s.DateTime })
+                .ToListAsync();
+
+            DateTime maintenant = DateTime.UtcNow;
+            int cycle = 0;
+            while (true)
+            {
+                var bloc = aVenir.Skip(cycle * SeasonLength).Take(SeasonLength).ToList();
+                if (bloc.Count < SeasonLength) { break; }
+                if (bloc.Any(a => !IsPlayed(a.Status))) { break; }
+                if (maintenant < bloc.Last().DateTime.AddHours(ChampionDisplayHours)) { break; }
+                cycle++;
+            }
+
+            return aVenir.Skip(cycle * SeasonLength).Take(SeasonLength)
+                         .Count(c => IsPlayed(c.Status));
         }
 
         // Les deux sortes de kop se comportent pareil : pas de plafond, pas de
@@ -978,6 +1028,12 @@ namespace dotnet.core.thegoldenfan.Services
 
             string name = sansNom ? "" : input.Name.Trim();
 
+            // Creer un tournoi, c'est s'y asseoir : le plafond compte aussi ici.
+            if (!IsKop(type))
+            {
+                await VerifierPlafondAsync(creatorId, input.IsPublic, src);
+            }
+
             if (IsKop(type))
             {
                 if (name.Length > KopNameMaxLength) { throw BaseException.InvalidModel(-5, src); }
@@ -1079,6 +1135,11 @@ namespace dotnet.core.thegoldenfan.Services
             if (group.Members.Any(m => m.UserId.Equals(userId)))
             { throw BaseException.AlreadyInDb(-3, src); }
 
+            if (!IsKop(group.Type))
+            {
+                await VerifierPlafondAsync(userId, group.IsPublic, src);
+            }
+
             // Le plafond des onze ne concerne que les groupes d'amis. Un kop n'en a pas,
             // mais on n'y entre que si l'on n'appartient a aucun autre kop.
             if (IsKop(group.Type))
@@ -1170,6 +1231,9 @@ namespace dotnet.core.thegoldenfan.Services
 
             if (group.Members.Any(m => m.UserId.Equals(userId)))
             { throw BaseException.AlreadyInDb(-5, src); }
+
+            // Le plafond est celui de l'inscrit, pas celui de son parrain.
+            await VerifierPlafondAsync(userId, group.IsPublic, src);
 
             var dormeurs = await MembresEnSommeilAsync(group.Members);
             if (group.Members.Count - dormeurs.Count >= MaxMembers)
@@ -1269,6 +1333,16 @@ namespace dotnet.core.thegoldenfan.Services
 
             var membership = group.Members.FirstOrDefault(m => m.UserId.Equals(userId));
             if (membership == null) { throw BaseException.NotFound(-2, src); }
+
+            // S'inscrire, c'est s'engager jusqu'au bout des cinq matchs (Antoine,
+            // 25 septembre 2026). Libre de partir tant que le premier match du
+            // cycle n'est pas joue ; ensuite on reste, quitte a ne plus jouer.
+            // Le site retire le bouton au meme moment ; ce verrou-ci tient meme
+            // si quelqu'un contourne la page.
+            if (!IsKop(group.Type) && await MatchsJouesDuCycleAsync(group.CreatedDate) > 0)
+            {
+                throw BaseException.InvalidModel(-3, src);
+            }
 
             // Compté avant toute suppression : après Remove, l'état de la collection
             // de navigation n'est pas garanti tant que SaveChanges n'a pas eu lieu.
