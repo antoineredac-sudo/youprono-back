@@ -893,6 +893,39 @@ namespace dotnet.core.thegoldenfan.Services
         public const int PSEUDO_MIN = 2;
         public const int PSEUDO_MAX = 16;
 
+        // Les caracteres d'un pseudo (Antoine, 25 septembre 2026). Le pseudo sert
+        // a se connecter : un emoji ou un espace se retape mal sur un autre
+        // telephone, et le joueur perd l'acces a son compte. Lettres (accents
+        // compris), chiffres, point, tiret et tiret bas, avec au moins une
+        // lettre. Les pseudos deja crees ne sont pas touches : la regle ne joue
+        // qu'a l'inscription et au renommage.
+        private static readonly System.Text.RegularExpressions.Regex PseudoPermis =
+            new System.Text.RegularExpressions.Regex(@"^[\p{L}\p{M}0-9._-]+$");
+        private static readonly System.Text.RegularExpressions.Regex PseudoUneLettre =
+            new System.Text.RegularExpressions.Regex(@"\p{L}");
+
+        // Personne ne se fait passer pour le jeu. Compare sans majuscules, sans
+        // accents, et sans les point, tiret et tiret bas.
+        private static readonly string[] PseudosReserves =
+        {
+            "thegoldenfan", "goldenfan", "admin", "administrateur",
+            "moderateur", "contact", "psg"
+        };
+
+        // 0 si le pseudo est conforme, 1 s'il contient un caractere refuse ou
+        // aucune lettre, 2 s'il est reserve.
+        public static int ControlePseudo(string pseudo)
+        {
+            if (!PseudoPermis.IsMatch(pseudo) || !PseudoUneLettre.IsMatch(pseudo)) { return 1; }
+            string nu = StringHelper.NormalizeString(pseudo)
+                .Replace(".", "").Replace("-", "").Replace("_", "");
+            foreach (var r in PseudosReserves)
+            {
+                if (nu == r || nu.Contains("goldenfan")) { return 2; }
+            }
+            return 0;
+        }
+
         private const int RAPPEL_HEURE_DEBUT = 8;
 
         // Le creneau va desormais jusqu'a 11 h. Les envois se font par passages
@@ -2141,6 +2174,11 @@ namespace dotnet.core.thegoldenfan.Services
             if (pseudo.Length < PSEUDO_MIN || pseudo.Length > PSEUDO_MAX)
             { throw BaseException.InvalidModel(-4, src); }
 
+            // Code -6 : caractere refuse. Code -7 : pseudo reserve.
+            int controle = ControlePseudo(pseudo);
+            if (controle == 1) { throw BaseException.InvalidModel(-6, src); }
+            if (controle == 2) { throw BaseException.InvalidModel(-7, src); }
+
             // Code -5 : « adresse déjà liée à un compte ». Vérifié avant le pseudo :
             // quelqu'un qui revient créer un compte a sans doute oublié le sien,
             // et c'est vers la récupération qu'il faut l'orienter, pas vers un
@@ -2352,6 +2390,12 @@ namespace dotnet.core.thegoldenfan.Services
 
             if (nouveau.Length < PSEUDO_MIN || nouveau.Length > PSEUDO_MAX)
             { throw new BaseException(-4, src, "Le nouveau pseudo doit compter entre " + PSEUDO_MIN + " et " + PSEUDO_MAX + " caractères. Rien n'a été changé."); }
+
+            int controle = ControlePseudo(nouveau);
+            if (controle == 1)
+            { throw new BaseException(-7, src, "Lettres, chiffres, point, tiret ou tiret bas uniquement, avec au moins une lettre. Rien n'a été changé."); }
+            if (controle == 2)
+            { throw new BaseException(-8, src, "Ce pseudo est réservé. Rien n'a été changé."); }
 
             string ancienNorm = StringHelper.NormalizeString(ancien);
             if (GetRole(ancienNorm) == "administrators")
