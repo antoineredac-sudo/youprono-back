@@ -543,13 +543,10 @@ namespace dotnet.core.thegoldenfan.Services
             // Le mode tournoi (texte d'Antoine, valide le 25 septembre 2026,
             // envoi le mercredi 30 septembre a 8 h).
             string contenu =
-                // Le pre-en-tete : la ligne grise que les messageries affichent
-                // apres l'objet. Invisible dans le courriel ouvert.
-                "<div style=\"display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;\">"
-              + "Cr&eacute;e ton tournoi priv&eacute; et d&eacute;fie tes amis avant PSG &ndash; Le Mans."
-              + "</div>"
-
-              + PARA + "Salut " + nom + ",</p>"
+                // Pas de pre-en-tete cache : mail-tester (SpamAssassin) le compte
+                // comme du texte invisible et retire 2,5 points (25 septembre
+                // 2026). Les messageries affichent le debut du courriel a la place.
+                PARA + "Salut " + nom + ",</p>"
 
               + PARA + "The Golden Fan active le mode tournoi : de 2 &agrave; 11 joueurs, 5 matchs, "
               + "1 vainqueur, et des troph&eacute;es &agrave; d&eacute;bloquer pour les meilleurs.</p>"
