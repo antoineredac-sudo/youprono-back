@@ -38,6 +38,17 @@ namespace dotnet.core.thegoldenfan.Services
         // gens de l'exterieur. Personne n'est exclu d'un tournoi ou il est
         // deja : le plafond ne joue qu'a l'entree.
         private const int MaxTournoisPublics = 5;
+
+        // Un tournoi a une fin (Antoine, 25 septembre 2026). Il ne repart plus
+        // tout seul pour cinq nouveaux matchs : un tournoi public s'arrete au
+        // cinquieme match note, un tournoi prive aussi, mais son createur peut le
+        // relancer avec les memes membres. Toutes les boucles qui faisaient
+        // avancer les cycles restent en place, bloquees au premier : les remettre
+        // en service ne demanderait que de passer ce drapeau a true.
+        private static readonly bool CyclesAutomatiques = false;
+
+        // Le createur d'un tournoi prive termine a dix jours pour le relancer.
+        private const int JoursPourRelancer = 10;
         public const int CodePlafondPublic = -20;
 
         // Un mini-championnat dure 5 matchs du PSG, toutes compétitions confondues.
@@ -125,10 +136,28 @@ namespace dotnet.core.thegoldenfan.Services
         private async Task VerifierPlafondAsync(Guid userId, bool estPublic, string src)
         {
             if (!estPublic) { return; }
-            int deja = await dbContext.GroupMembers
-                .CountAsync(m => m.UserId.Equals(userId)
-                              && m.Group.Type.Equals(TypeAmis)
-                              && m.Group.IsPublic);
+
+            // Un tournoi termine (cinq matchs notes) ne compte plus : son joueur
+            // peut aussitot en rejoindre un autre.
+            var naissances = await dbContext.GroupMembers
+                .Where(m => m.UserId.Equals(userId)
+                         && m.Group.Type.Equals(TypeAmis)
+                         && m.Group.IsPublic)
+                .Select(s => s.Group.CreatedDate)
+                .ToListAsync();
+            if (naissances.Count < MaxTournoisPublics) { return; }
+
+            var calendrier = await dbContext.Matches
+                .OrderBy(o => o.DateTime)
+                .Select(s => new { s.Status, s.DateTime })
+                .ToListAsync();
+
+            int deja = naissances.Count(n =>
+            {
+                var cinq = calendrier.Where(w => w.DateTime >= n).Take(SeasonLength).ToList();
+                bool fini = cinq.Count >= SeasonLength && cinq.All(a => IsPlayed(a.Status));
+                return !fini;
+            });
             if (deja >= MaxTournoisPublics)
             {
                 throw BaseException.InvalidModel(CodePlafondPublic, src);
@@ -151,6 +180,7 @@ namespace dotnet.core.thegoldenfan.Services
             int cycle = 0;
             while (true)
             {
+                if (!CyclesAutomatiques) { break; }
                 var bloc = aVenir.Skip(cycle * SeasonLength).Take(SeasonLength).ToList();
                 if (bloc.Count < SeasonLength) { break; }
                 if (bloc.Any(a => !IsPlayed(a.Status))) { break; }
@@ -239,6 +269,12 @@ namespace dotnet.core.thegoldenfan.Services
             // l'accueil le tournoi ou l'on peut encore faire entrer du monde
             // (23 septembre 2026).
             public DateTime? InscriptionsFermeture { get; set; }
+
+            // Ses cinq matchs sont notes (25 septembre 2026), et le coup d'envoi
+            // du cinquieme. Le site ne montre plus son salon pour un match qui
+            // vient apres, et ne le propose plus pour les invitations.
+            public bool Finished { get; set; }
+            public DateTime? LastMatchDate { get; set; }
         }
 
         // La place d'un membre sur un match du cycle, avec le nombre de joueurs
@@ -748,6 +784,16 @@ namespace dotnet.core.thegoldenfan.Services
             // Pour ceux qui ont commencé : où ils en sont, et qui mène.
             public int MatchesPlayed { get; set; }
             public string? Leader { get; set; }
+
+            // Termine : les cinq matchs sont notes, Leader est le vainqueur
+            // (25 septembre 2026).
+            public bool Finished { get; set; }
+            // Le joueur qui demande la liste peut le relancer : il en est le
+            // createur, le tournoi est prive, termine, pas encore relance, et
+            // les dix jours ne sont pas ecoules.
+            public bool CanRelaunch { get; set; }
+            // Jusqu'a quand on peut le relancer (UTC).
+            public DateTime? RelaunchUntil { get; set; }
         }
 
         public class TournoisResult
@@ -801,6 +847,7 @@ namespace dotnet.core.thegoldenfan.Services
                 int cycle = 0;
                 while (true)
                 {
+                    if (!CyclesAutomatiques) { break; }
                     var bloc = aVenir.Skip(cycle * SeasonLength).Take(SeasonLength).ToList();
                     if (bloc.Count < SeasonLength) { break; }
                     if (bloc.Any(a => !IsPlayed(a.Status))) { break; }
@@ -839,10 +886,49 @@ namespace dotnet.core.thegoldenfan.Services
                 }
             }
 
+            // Les tournois deja relances : leur original disparait comme un
+            // tournoi public, et on ne peut plus le relancer.
+            var dejaRelances = new HashSet<Guid>(await dbContext.Groups
+                .Where(w => w.RelaunchedFromId != null)
+                .Select(s => s.RelaunchedFromId!.Value)
+                .ToListAsync());
+
             foreach (var g in groupes)
             {
                 DateTime? ferme = fermetures[g.Id];
                 bool ouvert = ferme.HasValue && maintenant < ferme.Value;
+
+                // La fin d'un tournoi (25 septembre 2026). Termine des que son
+                // cinquieme match est note. Un tournoi public, ou un prive deja
+                // relance, reste visible jusqu'a la cloture des predictions du
+                // match suivant, puis sort de la liste. Un prive non relance reste
+                // dix jours, le temps que son createur le relance. Sortir de la
+                // liste n'efface rien : le tournoi reste en base, et ses ballons
+                // dans la vitrine de chacun.
+                var duCycle = tousMatchs.Where(w => cycles[g.Id].Contains(w.Id)).ToList();
+                bool termine = duCycle.Count >= SeasonLength && joues[g.Id].Count >= SeasonLength;
+                DateTime? relancerJusquA = null;
+                bool peutRelancer = false;
+                if (termine)
+                {
+                    DateTime dernier = duCycle.Max(m => m.DateTime);
+                    bool relance = dejaRelances.Contains(g.Id);
+                    DateTime? disparait;
+                    if (g.IsPublic || relance)
+                    {
+                        var suivant = tousMatchs.FirstOrDefault(f => f.DateTime > dernier);
+                        disparait = suivant == null
+                            ? (DateTime?)null
+                            : ParisToUtc(suivant.DateTime.AddHours(-ClotureAvantHeures));
+                    }
+                    else
+                    {
+                        relancerJusquA = ParisToUtc(dernier).AddDays(JoursPourRelancer);
+                        disparait = relancerJusquA;
+                        peutRelancer = g.CreatorId.Equals(userId) && maintenant < relancerJusquA.Value;
+                    }
+                    if (disparait.HasValue && maintenant >= disparait.Value) { continue; }
+                }
 
                 var ligne = new TournoiResult
                 {
@@ -856,7 +942,10 @@ namespace dotnet.core.thegoldenfan.Services
                     Public = g.IsPublic,
                     ClosesAt = ferme,
                     MatchesPlayed = joues[g.Id].Count,
-                    Leader = null
+                    Leader = null,
+                    Finished = termine,
+                    CanRelaunch = peutRelancer,
+                    RelaunchUntil = peutRelancer ? relancerJusquA : null
                 };
 
                 if (ouvert)
@@ -1109,6 +1198,7 @@ namespace dotnet.core.thegoldenfan.Services
             int cycle = 0;
             while (true)
             {
+                if (!CyclesAutomatiques) { break; }
                 var bloc = aVenir.Skip(cycle * SeasonLength).Take(SeasonLength).ToList();
                 if (bloc.Count < SeasonLength) { break; }
                 if (bloc.Any(a => !IsPlayed(a.Status))) { break; }
@@ -1274,6 +1364,8 @@ namespace dotnet.core.thegoldenfan.Services
             public string InviteCode { get; set; } = null!;
             public string ParrainName { get; set; } = null!;
             public int MemberCount { get; set; }
+            // Vrai quand l'inscription vient de la relance d'un tournoi termine.
+            public bool Relance { get; set; }
         }
 
         public async Task<List<AnnonceResult>> AnnoncesAsync(Guid userId)
@@ -1305,7 +1397,8 @@ namespace dotnet.core.thegoldenfan.Services
                     GroupName = l.Group.Name,
                     InviteCode = l.Group.InviteCode,
                     ParrainName = (p == null) ? "Un joueur" : (p.DisplayName ?? "Un joueur"),
-                    MemberCount = combien
+                    MemberCount = combien,
+                    Relance = l.Group.RelaunchedFromId != null
                 });
             }
             return res;
@@ -1390,6 +1483,7 @@ namespace dotnet.core.thegoldenfan.Services
             int cycleIndex = 0;
             while (true)
             {
+                if (!CyclesAutomatiques) { break; }
                 var block = allMatches.Skip(cycleIndex * SeasonLength).Take(SeasonLength).ToList();
                 if (block.Count < SeasonLength) { break; }
                 if (block.Any(a => !IsPlayed(a.Status))) { break; }
@@ -1744,6 +1838,7 @@ namespace dotnet.core.thegoldenfan.Services
 
                 for (int c = 0; ; c++)
                 {
+                    if (c > 0 && !CyclesAutomatiques) { break; }
                     var block = allMatches.Skip(c * SeasonLength).Take(SeasonLength).ToList();
                     if (block.Count < SeasonLength) { break; }
                     if (block.Any(a => !IsPlayed(a.Status))) { break; }
@@ -3012,6 +3107,96 @@ namespace dotnet.core.thegoldenfan.Services
         // --- Renommer un groupe ---
         // Seul celui qui l'a créé peut le faire. Le nom est le seul champ qui
         // change : ni le code d'invitation, ni les membres, ni le cycle en cours.
+        // ===== RELANCER UN TOURNOI PRIVE =====
+        // Le createur d'un tournoi prive termine le relance d'un bouton (Antoine,
+        // 25 septembre 2026). C'est un NOUVEAU tournoi : meme nom, memes membres,
+        // cinq nouveaux matchs a partir du prochain match encore ouvert. L'ancien
+        // n'est pas touche -- son classement et ses ballons restent tels quels --
+        // il porte seulement la trace de sa relance, par RelaunchedFromId sur le
+        // nouveau. Chaque membre l'apprend par un bandeau a sa prochaine visite,
+        // et peut partir jusqu'au premier match.
+        public async Task<GroupResult> RelancerAsync(Guid groupId, Guid userId)
+        {
+            string src = "GroupService.RelancerAsync";
+
+            var ancien = await dbContext.Groups
+                .Include(i => i.Members)
+                .FirstOrDefaultAsync(w => w.Id.Equals(groupId));
+            if (ancien == null) { throw BaseException.NotFound(-1, src); }
+
+            if (IsKop(ancien.Type) || ancien.IsPublic || !ancien.CreatorId.Equals(userId))
+            { throw BaseException.InvalidModel(-2, src); }
+
+            var cinq = await dbContext.Matches
+                .Where(w => w.DateTime >= ancien.CreatedDate)
+                .OrderBy(o => o.DateTime)
+                .Take(SeasonLength)
+                .Select(s => new { s.Status, s.DateTime })
+                .ToListAsync();
+            bool termine = cinq.Count >= SeasonLength && cinq.All(a => IsPlayed(a.Status));
+            if (!termine) { throw BaseException.InvalidModel(-3, src); }
+
+            if (await dbContext.Groups.AnyAsync(w => w.RelaunchedFromId == groupId))
+            { throw BaseException.AlreadyInDb(-4, src); }
+
+            DateTime limite = ParisToUtc(cinq.Max(m => m.DateTime)).AddDays(JoursPourRelancer);
+            if (DateTime.UtcNow >= limite) { throw BaseException.InvalidModel(-5, src); }
+
+            string code;
+            do { code = GenerateInviteCode(); }
+            while (await dbContext.Groups.AnyAsync(w => w.InviteCode.Equals(code)));
+
+            var nouveau = new Group
+            {
+                Id = Guid.NewGuid(),
+                Name = ancien.Name,
+                InviteCode = code,
+                Type = TypeAmis,
+                IsPublic = false,
+                CreatorId = userId,
+                CreatedDate = await PremierDepartOuvertAsync(DateTime.UtcNow),
+                RelaunchedFromId = ancien.Id
+            };
+            dbContext.Groups.Add(nouveau);
+
+            DateTime maintenant = DateTime.UtcNow;
+            foreach (var m in ancien.Members)
+            {
+                bool createur = m.UserId.Equals(userId);
+                dbContext.GroupMembers.Add(new GroupMember
+                {
+                    Id = Guid.NewGuid(),
+                    GroupId = nouveau.Id,
+                    UserId = m.UserId,
+                    DateJoined = maintenant,
+                    AddedByUserId = createur ? (Guid?)null : userId,
+                    NoticeSeen = createur
+                });
+            }
+            await dbContext.SaveChangesAsync();
+
+            return new GroupResult
+            {
+                Id = nouveau.Id,
+                Name = nouveau.Name,
+                InviteCode = nouveau.InviteCode,
+                CreatedDate = nouveau.CreatedDate,
+                MemberCount = ancien.Members.Count,
+                CreatorId = nouveau.CreatorId,
+                Type = nouveau.Type
+            };
+        }
+
+        // Les tournois prives qu'un joueur peut relancer : pour le bandeau de
+        // l'accueil. La meme regle que la liste des tournois, lue au meme endroit.
+        public async Task<List<TournoiResult>> ARelancerAsync(Guid userId)
+        {
+            var t = await TournoisAsync(userId);
+            return t.Running.Where(w => w.CanRelaunch)
+                            .OrderBy(o => o.RelaunchUntil)
+                            .ToList();
+        }
+
         public class RenameModel
         {
             public string Name { get; set; } = null!;
@@ -3207,6 +3392,7 @@ namespace dotnet.core.thegoldenfan.Services
             int cycle = 0;
             while (true)
             {
+                if (!CyclesAutomatiques) { break; }
                 List<MatchDuCalendrier> bloc =
                     aVenir.Skip(cycle * SeasonLength).Take(SeasonLength).ToList();
                 if (bloc.Count < SeasonLength) { break; }
@@ -3219,6 +3405,15 @@ namespace dotnet.core.thegoldenfan.Services
                 aVenir.Skip(cycle * SeasonLength).Take(1).ToList();
             if (premier.Count == 0) { return null; }
             return ParisToUtc(premier[0].Quand.AddHours(-ClotureAvantHeures));
+        }
+
+        // Le coup d'envoi du cinquieme match d'un tournoi termine ; nul tant
+        // qu'il ne l'est pas.
+        private static DateTime? FinSurCalendrier(DateTime creation, List<MatchDuCalendrier> calendrier)
+        {
+            var cinq = calendrier.Where(w => w.Quand >= creation).Take(SeasonLength).ToList();
+            bool fini = cinq.Count >= SeasonLength && cinq.All(a => IsPlayed(a.Statut));
+            return fini ? cinq[cinq.Count - 1].Quand : (DateTime?)null;
         }
 
         public async Task<List<GroupResult>> ByUserIdAsync(Guid userId)
@@ -3247,7 +3442,12 @@ namespace dotnet.core.thegoldenfan.Services
                 Type = m.Group.Type,
                 InscriptionsFermeture = IsKop(m.Group.Type)
                     ? (DateTime?)null
-                    : FermetureSurCalendrier(m.Group.CreatedDate, calendrier)
+                    : FermetureSurCalendrier(m.Group.CreatedDate, calendrier),
+                LastMatchDate = IsKop(m.Group.Type)
+                    ? (DateTime?)null
+                    : FinSurCalendrier(m.Group.CreatedDate, calendrier),
+                Finished = !IsKop(m.Group.Type)
+                    && FinSurCalendrier(m.Group.CreatedDate, calendrier).HasValue
             }).ToList();
         }
     }
