@@ -428,7 +428,16 @@ namespace dotnet.core.thegoldenfan.Services
         // L'heure a laquelle l'annonce doit partir, heure de Paris. Tant que ce
         // moment n'est pas atteint, la route automatique ne fait rien : elle peut
         // donc etre appelee toutes les cinq minutes sans risque des maintenant.
-        private static readonly DateTime ANNONCE_DEPART_PARIS = new DateTime(2026, 9, 23, 8, 0, 0);
+        private static readonly DateTime ANNONCE_DEPART_PARIS = new DateTime(2026, 9, 30, 8, 0, 0);
+
+        // Le mecanisme d'annonce sert a plusieurs courriels successifs (le
+        // changement de nom le 23 septembre, le mode tournoi le 30). Un inscrit
+        // a recu l'annonce EN COURS si AnnounceSentAt est posterieure au debut de
+        // la campagne ; tout ce qui est plus ancien appartient a une annonce
+        // precedente. Cette date doit preceder tout envoi de la campagne, test
+        // compris : le lundi 28 septembre a minuit (UTC).
+        private static readonly DateTime ANNONCE_CAMPAGNE_UTC =
+            new DateTime(2026, 9, 28, 0, 0, 0, DateTimeKind.Utc);
 
         // Appelee en boucle par le service de surveillance, comme le rappel du
         // matin. Elle refuse avant l'heure, et apres le premier envoi il ne reste
@@ -453,7 +462,8 @@ namespace dotnet.core.thegoldenfan.Services
 
             try
             {
-                result.DejaRecus = await dbContext.Users.CountAsync(w => w.AnnounceSentAt != null);
+                result.DejaRecus = await dbContext.Users.CountAsync(
+                    w => w.AnnounceSentAt != null && w.AnnounceSentAt >= ANNONCE_CAMPAGNE_UTC);
                 result.SansAdresse = await dbContext.Users.CountAsync(w => w.Email == null || w.Email == "");
 
                 // Celui qui s'est desabonne ne recoit rien, meme une annonce qu'on
@@ -464,7 +474,8 @@ namespace dotnet.core.thegoldenfan.Services
                     w => !w.EmailOptIn && w.Email != null && w.Email != "");
 
                 var destinataires = await dbContext.Users
-                    .Where(w => w.AnnounceSentAt == null && w.EmailOptIn
+                    .Where(w => (w.AnnounceSentAt == null || w.AnnounceSentAt < ANNONCE_CAMPAGNE_UTC)
+                             && w.EmailOptIn
                              && w.Email != null && w.Email != "")
                     .ToListAsync();
 
@@ -529,87 +540,57 @@ namespace dotnet.core.thegoldenfan.Services
             string lienStop = "https://thegoldenfan.fr/#stop/" + userId.ToString();
             string nom = System.Net.WebUtility.HtmlEncode(pseudo);
 
+            // Le mode tournoi (texte d'Antoine, valide le 25 septembre 2026,
+            // envoi le mercredi 30 septembre a 8 h).
             string contenu =
-                PARA + "Salut " + nom + ",</p>"
+                // Le pre-en-tete : la ligne grise que les messageries affichent
+                // apres l'objet. Invisible dans le courriel ouvert.
+                "<div style=\"display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;\">"
+              + "Cr&eacute;e ton tournoi priv&eacute; et d&eacute;fie tes amis avant PSG &ndash; Le Mans."
+              + "</div>"
 
-              + PARA + "YouProno s'appelle d&eacute;sormais The Golden Fan. Un nouveau nom "
-              + "qui illustre mieux notre promesse : r&eacute;compenser l'expertise des "
-              + "supporters du PSG.</p>"
+              + PARA + "Salut " + nom + ",</p>"
 
-              + PARA + "Pour toi, rien ne change : ton pseudo, ton mot de passe, tes groupes et ta "
-              + "place au classement t'attendent sur <a href=\"https://thegoldenfan.fr\" style=\"color:"
-              + C_OR + ";font-weight:bold;text-decoration:none;\">thegoldenfan.fr</a>.</p>"
+              + PARA + "The Golden Fan active le mode tournoi : de 2 &agrave; 11 joueurs, 5 matchs, "
+              + "1 vainqueur, et des troph&eacute;es &agrave; d&eacute;bloquer pour les meilleurs.</p>"
 
-              + "<p style=\"font-family:" + POLICE + ";font-size:17px;line-height:1.6;"
-              + "color:" + C_OR + ";margin:24px 0 12px;font-weight:bold;\">Pendant la tr&ecirc;ve "
-              + "nous allons tester ta culture club.</p>"
-              + "<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" "
-              + "style=\"margin:4px 0 22px;\"><tr>"
-              + "<td style=\"background:" + C_BANDE + ";border:1px solid " + C_OR + ";"
-              + "border-radius:12px;padding:18px 16px 14px;text-align:center;\">"
-              + "<img src=\"https://thegoldenfan.fr/maillot-psg.png\" width=\"150\" "
-              + "alt=\"1 T-shirt du PSG &agrave; gagner\" "
-              + "style=\"display:block;margin:0 auto 10px;border:0;width:150px;max-width:60%;height:auto;\">"
-              + "<div style=\"font-family:" + POLICE + ";font-size:15px;font-weight:bold;"
-              + "color:" + C_OR + ";\">1 T-shirt du PSG &agrave; gagner</div>"
-              + "</td></tr></table>"
+              + PARA + "Cr&eacute;e ton tournoi priv&eacute; d&egrave;s maintenant et invite tes amis "
+              + "supporters. Tu peux aussi rejoindre des tournois publics pour affronter les autres "
+              + "membres du jeu.</p>"
 
-              + PARA + "D&egrave;s aujourd'hui et jusqu'au vendredi 2 octobre, "
-              + "trois nouvelles questions sur l'histoire du PSG t'attendent chaque jour :</p>"
-              + "<ul style=\"font-family:" + POLICE + ";font-size:16px;line-height:1.7;color:"
-              + C_TEXTE + ";margin:0 0 16px;padding-left:22px;\">"
-              + "<li>une facile &agrave; 1 point, une moyenne &agrave; 2 points, une difficile &agrave; 3 points ;</li>"
-              + "<li>4 r&eacute;ponses au choix et 20 secondes pour r&eacute;pondre ;</li>"
-              + "<li>&agrave; &eacute;galit&eacute; de points, le plus rapide passe devant.</li></ul>"
+              + "<a href=\"https://thegoldenfan.fr/#tournois\" style=\"text-decoration:none;\">"
+              + "<img src=\"https://thegoldenfan.fr/mail-tournois.png\" width=\"300\" "
+              + "alt=\"La page des tournois de The Golden Fan\" "
+              + "style=\"display:block;margin:6px auto 22px;border:1px solid " + C_BORD + ";"
+              + "border-radius:12px;width:300px;max-width:85%;height:auto;\"></a>"
 
-              + PARA + "Tu as manqu&eacute; un jour ? Les questions restent jouables jusqu'au "
-              + "dimanche 4 octobre &agrave; 18 h.</p>"
+              + PARA + "Les inscriptions restent ouvertes jusqu'&agrave; la cl&ocirc;ture des "
+              + "pr&eacute;dictions du prochain match du PSG, <span style=\"white-space:nowrap;"
+              + "font-weight:bold;color:" + C_OR + ";\">samedi 10 octobre &agrave; 15:00</span>.</p>"
 
-              + PARA + "&Agrave; la cl&ocirc;ture, le gagnant sera tir&eacute; au sort parmi les "
-              + "5 premiers du classement.</p>"
+              + BoutonHtml("https://thegoldenfan.fr/#tournois", "CR&Eacute;ER OU REJOINDRE UN TOURNOI", false, false)
 
-              + BoutonHtml("https://thegoldenfan.fr/#culture-club", "Je rel&egrave;ve mon premier d&eacute;fi", false, false)
-
-              + PARA + "Prochain rendez-vous sur le terrain : <span style=\"white-space:nowrap;\">"
-              + "PSG &ndash; Le Mans</span>, le samedi 10 octobre.</p>"
+              + PARA + "Et bien s&ucirc;r, les pr&eacute;dictions pour <span style=\"white-space:nowrap;\">"
+              + "PSG &ndash; Le Mans</span> sont d&eacute;j&agrave; ouvertes.</p>"
 
               + "<p style=\"font-family:" + POLICE + ";font-size:16px;line-height:1.7;"
               + "color:" + C_TEXTE + ";margin:22px 0 0;\">"
-              + "Allez Paris,<br><br>Antoine</p>"
-
-              + "<p style=\"font-family:" + POLICE + ";font-size:15px;line-height:1.65;"
-              + "color:#c2cae8;margin:24px 0 0;border-top:1px solid " + C_BORD + ";padding-top:16px;\">"
-              + "P.-S. &mdash; Si tu avais mis le jeu sur l'&eacute;cran d'accueil de ton "
-              + "t&eacute;l&eacute;phone, supprime l'ancienne ic&ocirc;ne et r&eacute;installe-le "
-              + "depuis la nouvelle adresse.<br><br>"
-              + "&Agrave; partir du mois d'octobre, mes messages partiront de "
-              + "<span style=\"color:" + C_OR + ";\">contact@thegoldenfan.fr</span>. Ajoute cette "
-              + "adresse &agrave; tes contacts pour &ecirc;tre s&ucirc;r de les recevoir.</p>";
+              + "Bonnes pr&eacute;dictions, et allez Paris !<br><br>Antoine</p>";
 
             string corps = CadreHtml("Le jeu des experts du PSG", contenu, lienStop);
 
             string texteBrut =
                 "Salut " + pseudo + ",\n\n"
-              + "YouProno s'appelle desormais The Golden Fan. Un nouveau nom qui illustre mieux "
-              + "notre promesse : recompenser l'expertise des supporters du PSG.\n\n"
-              + "Pour toi, rien ne change : ton pseudo, ton mot de passe, tes groupes et ta place au "
-              + "classement t'attendent sur thegoldenfan.fr.\n\n"
-              + "Pendant la treve nous allons tester ta culture club.\n\n"
-              + "Des aujourd'hui et jusqu'au vendredi 2 octobre, trois nouvelles "
-              + "questions sur l'histoire du PSG t'attendent chaque jour :\n"
-              + "- une facile a 1 point, une moyenne a 2 points, une difficile a 3 points ;\n"
-              + "- 4 reponses au choix et 20 secondes pour repondre ;\n"
-              + "- a egalite de points, le plus rapide passe devant.\n\n"
-              + "Tu as manque un jour ? Les questions restent jouables jusqu'au dimanche 4 octobre a 18 h.\n\n"
-              + "A la cloture, le gagnant sera tire au sort parmi les 5 premiers du classement.\n\n"
-              + "Je releve mon premier defi : https://thegoldenfan.fr/#culture-club\n\n"
-              + "Prochain rendez-vous sur le terrain : PSG - Le Mans, le samedi 10 octobre.\n\n"
-              + "Allez Paris,\n\n"
+              + "The Golden Fan active le mode tournoi : de 2 a 11 joueurs, 5 matchs, 1 vainqueur, "
+              + "et des trophees a debloquer pour les meilleurs.\n\n"
+              + "Cree ton tournoi prive des maintenant et invite tes amis supporters. Tu peux aussi "
+              + "rejoindre des tournois publics pour affronter les autres membres du jeu.\n\n"
+              + "Les inscriptions restent ouvertes jusqu'a la cloture des predictions du prochain "
+              + "match du PSG, samedi 10 octobre a 15:00.\n\n"
+              + "Creer ou rejoindre un tournoi : https://thegoldenfan.fr/#tournois\n\n"
+              + "Et bien sur, les predictions pour PSG - Le Mans sont deja ouvertes.\n\n"
+              + "Bonnes predictions, et allez Paris !\n\n"
               + "Antoine\n\n"
-              + "P.-S. - Si tu avais mis le jeu sur l'ecran d'accueil de ton telephone, supprime "
-              + "l'ancienne icone et reinstalle-le depuis la nouvelle adresse.\n\n"
-              + "A partir du mois d'octobre, mes messages partiront de contact@thegoldenfan.fr. "
-              + "Ajoute cette adresse a tes contacts pour etre sur de les recevoir.\n\n"
               + "---\n"
               + "Ne plus recevoir de rappel avant match : " + lienStop;
 
@@ -618,7 +599,7 @@ namespace dotnet.core.thegoldenfan.Services
                 sender = new { name = "The Golden Fan", email = expediteur },
                 to = new[] { new { email = adresse } },
                 replyTo = new { email = expediteur, name = "The Golden Fan" },
-                subject = "Pendant la trêve, le PSG reste à l'affiche",
+                subject = "Le mode tournoi arrive sur The Golden Fan",
                 htmlContent = corps,
                 textContent = texteBrut,
                 headers = new Dictionary<string, string>
@@ -860,7 +841,7 @@ namespace dotnet.core.thegoldenfan.Services
               "<tr><td style=\"background:" + C_BANDE + ";border-top:1px solid " + C_BORD + ";"
             + "padding:18px 24px;text-align:center;\">"
             + "<div style=\"font-family:" + POLICE + ";font-size:14px;color:" + C_OR + ";"
-            + "font-weight:bold;\">@thegoldenfan</div>"
+            + "font-weight:bold;\">@the_golden_fan</div>"
             + "<div style=\"font-family:" + POLICE + ";font-size:11px;color:#8b99d0;"
             + "margin-top:10px;line-height:1.6;\">"
             + "<a href=\"" + lienStop + "\" style=\"color:#8b99d0;\">Ne plus recevoir de rappel "
