@@ -41,6 +41,12 @@ using (var scope = app.Services.CreateScope())
         db.Database.ExecuteSqlRaw(
             "ALTER TABLE \"Group\" ADD COLUMN IF NOT EXISTS \"IsPublic\" boolean NOT NULL DEFAULT false;");
 
+        // Un tournoi prive termine peut etre relance par son createur : le
+        // nouveau tournoi garde la trace de celui qu'il prolonge (25 septembre
+        // 2026). Nul pour tous les tournois existants.
+        db.Database.ExecuteSqlRaw(
+            "ALTER TABLE \"Group\" ADD COLUMN IF NOT EXISTS \"RelaunchedFromId\" uuid;");
+
         // Un joueur peut en inscrire un autre a son tournoi. On garde qui l'a
         // inscrit -- pour le lui dire -- et si on le lui a deja dit
         // (23 septembre 2026). Nul pour tous ceux qui se sont inscrits seuls.
