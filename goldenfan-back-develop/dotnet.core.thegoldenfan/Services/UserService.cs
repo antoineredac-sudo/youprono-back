@@ -428,10 +428,10 @@ namespace dotnet.core.thegoldenfan.Services
         // L'heure a laquelle l'annonce doit partir, heure de Paris. Tant que ce
         // moment n'est pas atteint, la route automatique ne fait rien : elle peut
         // donc etre appelee toutes les cinq minutes sans risque des maintenant.
-        private static readonly DateTime ANNONCE_DEPART_PARIS = new DateTime(2026, 9, 30, 8, 0, 0);
+        private static readonly DateTime ANNONCE_DEPART_PARIS = new DateTime(2026, 9, 29, 8, 0, 0);
 
         // Le mecanisme d'annonce sert a plusieurs courriels successifs (le
-        // changement de nom le 23 septembre, le mode tournoi le 30). Un inscrit
+        // changement de nom le 23 septembre, le mode tournoi le 29). Un inscrit
         // a recu l'annonce EN COURS si AnnounceSentAt est posterieure au debut de
         // la campagne ; tout ce qui est plus ancien appartient a une annonce
         // precedente. Cette date doit preceder tout envoi de la campagne, test
@@ -540,53 +540,49 @@ namespace dotnet.core.thegoldenfan.Services
             string lienStop = "https://thegoldenfan.fr/#stop/" + userId.ToString();
             string nom = System.Net.WebUtility.HtmlEncode(pseudo);
 
-            // Le mode tournoi (texte d'Antoine, valide le 25 septembre 2026,
-            // envoi le mercredi 30 septembre a 8 h).
+            // Le mode tournoi (texte d'Antoine, valide le 26 septembre 2026,
+            // envoi le mardi 29 septembre a 8 h). L'image mene a la page des
+            // tournois, le bouton aux predictions du prochain match.
             string contenu =
                 // Pas de pre-en-tete cache : mail-tester (SpamAssassin) le compte
                 // comme du texte invisible et retire 2,5 points (25 septembre
                 // 2026). Les messageries affichent le debut du courriel a la place.
                 PARA + "Salut " + nom + ",</p>"
-
-              + PARA + "The Golden Fan active le mode tournoi : de 2 &agrave; 11 joueurs, 5 matchs, "
-              + "1 vainqueur, et des troph&eacute;es &agrave; d&eacute;bloquer pour les meilleurs.</p>"
-
-              + PARA + "Cr&eacute;e ton tournoi priv&eacute; et invite tes amis "
-              + "supporters du PSG. Tu peux aussi cr&eacute;er ou rejoindre des tournois publics pour affronter les autres "
-              + "membres du jeu.</p>"
-
+              + PARA + "The Golden Fan active le mode tournoi : 2 &agrave; 11 joueurs, 5 matchs, "
+              + "et des troph&eacute;es &agrave; d&eacute;bloquer pour les meilleurs.</p>"
+              + PARA + "Tu peux d&eacute;sormais d&eacute;fier tes amis sur WhatsApp ou sur X. "
+              + "Ils pourront te rejoindre jusqu'au <span style=\"white-space:nowrap;"
+              + "font-weight:bold;color:" + C_OR + ";\">samedi 10 octobre &agrave; 15:00</span>, "
+              + "deux heures avant <span style=\"white-space:nowrap;\">PSG &ndash; Le Mans</span>.</p>"
               + "<a href=\"https://thegoldenfan.fr/#tournois\" style=\"text-decoration:none;\">"
               + "<img src=\"https://thegoldenfan.fr/mail-tournois.png\" width=\"300\" "
               + "alt=\"La page des tournois de The Golden Fan\" "
               + "style=\"display:block;margin:6px auto 22px;border:1px solid " + C_BORD + ";"
               + "border-radius:12px;width:300px;max-width:85%;height:auto;\"></a>"
-
-              + PARA + "Les personnes invit&eacute;es peuvent rejoindre le tournoi jusqu'&agrave; la cl&ocirc;ture des "
-              + "pr&eacute;dictions du prochain match du PSG, le <span style=\"white-space:nowrap;"
-              + "font-weight:bold;color:" + C_OR + ";\">samedi 10 octobre &agrave; 15:00</span>.</p>"
-
-              + BoutonHtml("https://thegoldenfan.fr/#tournois", "CR&Eacute;ER OU REJOINDRE UN TOURNOI", false, false)
-
-              + PARA + "Et bien s&ucirc;r, les pr&eacute;dictions pour <span style=\"white-space:nowrap;\">"
-              + "PSG &ndash; Le Mans</span> sont d&eacute;j&agrave; ouvertes.</p>"
-
+              + PARA + "Tu peux aussi cr&eacute;er ou rejoindre des tournois publics pour affronter les autres "
+              + "membres du jeu.</p>"
+              + PARA + "Pour info, il est encore temps de jouer au d&eacute;fi &laquo;&nbsp;Culture club&nbsp;&raquo; "
+              + "jusqu'au <span style=\"white-space:nowrap;\">dimanche 4 octobre</span>, et les "
+              + "pr&eacute;dictions pour <span style=\"white-space:nowrap;\">PSG &ndash; Le Mans</span> "
+              + "sont d&eacute;j&agrave; ouvertes.</p>"
+              + BoutonHtml("https://thegoldenfan.fr", "FAIRE MES PR&Eacute;DICTIONS", false, false)
               + "<p style=\"font-family:" + POLICE + ";font-size:16px;line-height:1.7;"
               + "color:" + C_TEXTE + ";margin:22px 0 0;\">"
-              + "Bonnes pr&eacute;dictions, et allez Paris !<br><br>Antoine</p>";
-
+              + "Bonnes pr&eacute;dictions et allez Paris !<br><br>Antoine</p>";
             string corps = CadreHtml("Le jeu des experts du PSG", contenu, lienStop);
 
             string texteBrut =
                 "Salut " + pseudo + ",\n\n"
-              + "The Golden Fan active le mode tournoi : de 2 a 11 joueurs, 5 matchs, 1 vainqueur, "
+              + "The Golden Fan active le mode tournoi : 2 a 11 joueurs, 5 matchs, "
               + "et des trophees a debloquer pour les meilleurs.\n\n"
-              + "Cree ton tournoi prive et invite tes amis supporters du PSG. Tu peux aussi "
-              + "creer ou rejoindre des tournois publics pour affronter les autres membres du jeu.\n\n"
-              + "Les personnes invitees peuvent rejoindre le tournoi jusqu'a la cloture des predictions "
-              + "du prochain match du PSG, le samedi 10 octobre a 15:00.\n\n"
-              + "Creer ou rejoindre un tournoi : https://thegoldenfan.fr/#tournois\n\n"
-              + "Et bien sur, les predictions pour PSG - Le Mans sont deja ouvertes.\n\n"
-              + "Bonnes predictions, et allez Paris !\n\n"
+              + "Tu peux desormais defier tes amis sur WhatsApp ou sur X. Ils pourront te rejoindre "
+              + "jusqu'au samedi 10 octobre a 15:00, deux heures avant PSG - Le Mans.\n\n"
+              + "Tu peux aussi creer ou rejoindre des tournois publics pour affronter les autres "
+              + "membres du jeu.\n\n"
+              + "Pour info, il est encore temps de jouer au defi \"Culture club\" jusqu'au dimanche "
+              + "4 octobre, et les predictions pour PSG - Le Mans sont deja ouvertes.\n\n"
+              + "Faire mes predictions : https://thegoldenfan.fr\n\n"
+              + "Bonnes predictions et allez Paris !\n\n"
               + "Antoine\n\n"
               + "---\n"
               + "Ne plus recevoir de rappel avant match : " + lienStop;
