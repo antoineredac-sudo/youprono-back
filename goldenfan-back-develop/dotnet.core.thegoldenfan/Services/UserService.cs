@@ -1363,6 +1363,7 @@ namespace dotnet.core.thegoldenfan.Services
                     // Sa meilleure et sa pire categorie, comme sur l'ecran des resultats.
                     string? meilleure = null, pire = null;
                     double meilleureNote = 0, pireNote = 0;
+                    var notesCat = new Dictionary<string, double>();
                     var sien = parCategorie.FirstOrDefault(f => f.UserId.Equals(user.Id));
                     if (sien != null)
                     {
@@ -1382,11 +1383,12 @@ namespace dotnet.core.thegoldenfan.Services
                             var bas = connues.OrderBy(o => o.Value!.Value).First();
                             meilleure = haut.Key; meilleureNote = Math.Round(haut.Value!.Value, 3);
                             pire = bas.Key; pireNote = Math.Round(bas.Value!.Value, 3);
+                            notesCat = connues.ToDictionary(k => k.Key, v => Math.Round(v.Value!.Value, 3));
                         }
                     }
 
                     string verdict = GroupService.VerdictTexte(note, mediane, notesCount,
-                        meilleure, meilleureNote, pire, pireNote, user.Id, match.Id);
+                        meilleure, meilleureNote, pire, pireNote, user.Id, match.Id, notesCat);
 
                     await EnvoyerResultatAsync(user.Email!, user.DisplayName ?? "", user.Id,
                         result.Affiche, note, joursDepuis == 1, verdict);
