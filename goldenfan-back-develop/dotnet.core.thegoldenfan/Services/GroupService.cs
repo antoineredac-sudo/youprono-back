@@ -906,13 +906,15 @@ namespace dotnet.core.thegoldenfan.Services
             var coefsAvant = new Dictionary<string, Dictionary<Guid, double>>();
             // Qui a deja joue, et quand : un membre qui n'a joue aucun match
             // n'entre pas dans la moyenne, meme s'il porte des notes de forfait.
-            var dejaJoue = tousMembres.Count == 0
-                ? new List<(Guid UserId, DateTime Date)>()
-                : (await dbContext.UserMatches
+            var dejaJoue = new List<(Guid UserId, DateTime Date)>();
+            if (tousMembres.Count > 0)
+            {
+                var brutJoue = await dbContext.UserMatches
                     .Where(w => tousMembres.Contains(w.UserId) && w.ResultTotal.HasValue)
-                    .Select(sp => new { sp.UserId, sp.Match.DateTime })
-                    .ToListAsync())
-                  .Select(x => (x.UserId, x.DateTime)).ToList();
+                    .Select(sp => new { sp.UserId, Quand = sp.Match.DateTime })
+                    .ToListAsync();
+                foreach (var bj in brutJoue) { dejaJoue.Add((bj.UserId, bj.Quand)); }
+            }
 
             // Les tournois deja relances : leur original disparait comme un
             // tournoi public, et on ne peut plus le relancer.
@@ -1010,7 +1012,7 @@ namespace dotnet.core.thegoldenfan.Services
                         coefs = avant;
                     }
                 }
-                var valeurs = g.Members
+                List<double> valeurs = g.Members
                     .Select(m => m.UserId)
                     .Where(id => dejaJoue.Any(d => d.UserId.Equals(id)
                                                 && (figeLe == null || d.Date < figeLe.Value)))
