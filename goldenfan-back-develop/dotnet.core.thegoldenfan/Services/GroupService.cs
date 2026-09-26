@@ -788,6 +788,13 @@ namespace dotnet.core.thegoldenfan.Services
             public int MatchesPlayed { get; set; }
             public string? Leader { get; set; }
 
+            // Le niveau du tournoi (26 septembre 2026) : la moyenne des coefs
+            // expert de ses membres, sans ceux qui n'ont encore joue aucun match.
+            // Elle suit les arrivees et les departs jusqu'au premier match du
+            // tournoi, puis elle est figee a la valeur d'avant ce match. Nulle si
+            // aucun membre n'a de coef.
+            public double? AverageCoef { get; set; }
+
             // Termine : les cinq matchs sont notes, Leader est le vainqueur
             // (25 septembre 2026).
             public bool Finished { get; set; }
@@ -889,6 +896,24 @@ namespace dotnet.core.thegoldenfan.Services
                 }
             }
 
+            // --- Le niveau de chaque tournoi (26 septembre 2026) ---
+            // Les coefs du moment, et ceux d'avant le premier match des tournois
+            // deja commences, un calcul par premier match distinct.
+            string? equipe = await dbContext.UserMatches.Select(um => um.TeamId).FirstOrDefaultAsync();
+            var coefsActuels = equipe != null
+                ? await userService.ExpertCoefAllAsync(equipe)
+                : new Dictionary<Guid, double>();
+            var coefsAvant = new Dictionary<string, Dictionary<Guid, double>>();
+            // Qui a deja joue, et quand : un membre qui n'a joue aucun match
+            // n'entre pas dans la moyenne, meme s'il porte des notes de forfait.
+            var dejaJoue = tousMembres.Count == 0
+                ? new List<(Guid UserId, DateTime Date)>()
+                : (await dbContext.UserMatches
+                    .Where(w => tousMembres.Contains(w.UserId) && w.ResultTotal.HasValue)
+                    .Select(sp => new { sp.UserId, sp.Match.DateTime })
+                    .ToListAsync())
+                  .Select(x => (x.UserId, x.DateTime)).ToList();
+
             // Les tournois deja relances : leur original disparait comme un
             // tournoi public, et on ne peut plus le relancer.
             var dejaRelances = new HashSet<Guid>(await dbContext.Groups
@@ -966,6 +991,33 @@ namespace dotnet.core.thegoldenfan.Services
                         .Where(w => joues[g.Id].Contains(w.Id))
                         .ToDictionary(k => k.Id, v => v.DateTime));
                 }
+
+                // Le niveau : fige au premier match une fois celui-ci joue.
+                Dictionary<Guid, double> coefs = coefsActuels;
+                DateTime? figeLe = null;
+                if (equipe != null && joues[g.Id].Count > 0 && cycles[g.Id].Count > 0)
+                {
+                    string premier = cycles[g.Id][0];
+                    var m0 = tousMatchs.FirstOrDefault(f => f.Id.Equals(premier));
+                    if (m0 != null)
+                    {
+                        figeLe = m0.DateTime;
+                        if (!coefsAvant.TryGetValue(premier, out var avant))
+                        {
+                            avant = await userService.ExpertCoefAllAsync(equipe, null, m0.DateTime);
+                            coefsAvant[premier] = avant;
+                        }
+                        coefs = avant;
+                    }
+                }
+                var valeurs = g.Members
+                    .Select(m => m.UserId)
+                    .Where(id => dejaJoue.Any(d => d.UserId.Equals(id)
+                                                && (figeLe == null || d.Date < figeLe.Value)))
+                    .Where(id => coefs.ContainsKey(id))
+                    .Select(id => coefs[id])
+                    .ToList();
+                ligne.AverageCoef = valeurs.Count > 0 ? Math.Round(valeurs.Average(), 3) : (double?)null;
 
                 if (ouvert) { res.Open.Add(ligne); } else { res.Running.Add(ligne); }
             }
