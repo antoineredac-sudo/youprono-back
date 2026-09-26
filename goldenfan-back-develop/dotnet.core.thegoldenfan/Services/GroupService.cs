@@ -2334,6 +2334,10 @@ namespace dotnet.core.thegoldenfan.Services
             public double BestCategoryNote { get; set; }
             public string? WorstCategory { get; set; }
             public double WorstCategoryNote { get; set; }
+
+            // Les six notes par categorie, pour que le verdict cite toutes celles
+            // qui le meritent (26 septembre 2026).
+            public Dictionary<string, double> CategoryNotes { get; set; } = new();
         }
 
         // ===== LE VERDICT DU MATCH =====
@@ -2416,15 +2420,56 @@ namespace dotnet.core.thegoldenfan.Services
                 Neutre = new[] { "Le PSG a joué un match, tu en avais pronostiqué un autre." } }
         };
 
-        private static readonly Dictionary<string, string> CategorieForteTexte = new()
+        // Le complement des bonnes categories (texte d'Antoine, 26 septembre 2026).
+        // 100/100 : « imbattable ». De 90 a 99 : « fort ». On cite TOUTES les
+        // categories concernees, de la meilleure note a la moins bonne :
+        //   « Tu as ete imbattable en composition et en score, et tres fort en possession. »
+        //   « Tu as ete imbattable en composition. »
+        //   « Tu as ete fort en possession et en centres. »
+        // « Tres fort » apres « imbattable », pour qu'un 97 ne sonne pas comme une descente.
+        private const double CategorieParfaite = 99.9995;
+
+        private static readonly string[] OrdreCategories =
+            { "composition", "score", "possession", "shots", "fouls", "crosses" };
+
+        private static readonly Dictionary<string, string> NomCategorie = new()
         {
-            { "composition", "Tu as été fort en composition." },
-            { "score",       "Tu as été fort en score." },
-            { "possession",  "Tu as été fort en possession." },
-            { "shots",       "Tu as été fort en tirs." },
-            { "fouls",       "Tu as été fort en fautes." },
-            { "crosses",     "Tu as été fort en centres." }
+            { "composition", "composition" },
+            { "score",       "score" },
+            { "possession",  "possession" },
+            { "shots",       "tirs" },
+            { "fouls",       "fautes" },
+            { "crosses",     "centres" }
         };
+
+        // « en composition », « en composition et en score »,
+        // « en composition, en score et en possession ».
+        private static string ListeCategories(List<string> cles)
+        {
+            var noms = cles.Select(c => "en " + NomCategorie[c]).ToList();
+            if (noms.Count == 1) { return noms[0]; }
+            return string.Join(", ", noms.Take(noms.Count - 1)) + " et " + noms[^1];
+        }
+
+        private static string? ComplementFort(Dictionary<string, double> notes)
+        {
+            var triees = notes
+                .Where(w => NomCategorie.ContainsKey(w.Key) && w.Value >= CategorieForte)
+                .OrderByDescending(o => o.Value)
+                .ThenBy(o => Array.IndexOf(OrdreCategories, o.Key))
+                .ToList();
+            if (triees.Count == 0) { return null; }
+
+            var parfaites = triees.Where(w => w.Value >= CategorieParfaite).Select(s => s.Key).ToList();
+            var fortes = triees.Where(w => w.Value < CategorieParfaite).Select(s => s.Key).ToList();
+
+            if (parfaites.Count > 0 && fortes.Count > 0)
+            { return "Tu as été imbattable " + ListeCategories(parfaites)
+                   + ", et très fort " + ListeCategories(fortes) + "."; }
+            if (parfaites.Count > 0)
+            { return "Tu as été imbattable " + ListeCategories(parfaites) + "."; }
+            return "Tu as été fort " + ListeCategories(fortes) + ".";
+        }
 
         private static readonly Dictionary<string, string> CategorieFaibleTexte = new()
         {
@@ -2441,7 +2486,7 @@ namespace dotnet.core.thegoldenfan.Services
             if (d == null || !d.HasScore) { return ""; }
             return VerdictTexte(d.Score, d.MatchMedian, d.ScoredCount,
                 d.BestCategory, d.BestCategoryNote, d.WorstCategory, d.WorstCategoryNote,
-                userId, matchId);
+                userId, matchId, d.CategoryNotes);
         }
 
         // La meme phrase, fabriquee a partir de nombres bruts. C'est cette version
@@ -2451,7 +2496,8 @@ namespace dotnet.core.thegoldenfan.Services
         public static string VerdictTexte(double score, double mediane, int scoredCount,
             string? bestCategory, double bestCategoryNote,
             string? worstCategory, double worstCategoryNote,
-            Guid userId, string matchId)
+            Guid userId, string matchId,
+            Dictionary<string, double>? notesParCategorie = null)
         {
             var tranche = Verdicts.FirstOrDefault(v => score >= v.Min) ?? Verdicts[^1];
 
@@ -2473,9 +2519,14 @@ namespace dotnet.core.thegoldenfan.Services
             // qui prend des risques, et c'est exactement ce qu'un supporter dirait.
             var morceaux = new List<string> { phrase };
 
-            if (!string.IsNullOrEmpty(d_BestCategory) && d_BestCategoryNote >= CategorieForte
-                && CategorieForteTexte.TryGetValue(d_BestCategory, out var fort))
-            { morceaux.Add(fort); }
+            // Toutes les notes connues ; a defaut, la meilleure seule.
+            var notes = (notesParCategorie != null && notesParCategorie.Count > 0)
+                ? notesParCategorie
+                : (!string.IsNullOrEmpty(d_BestCategory)
+                    ? new Dictionary<string, double> { { d_BestCategory!, d_BestCategoryNote } }
+                    : new Dictionary<string, double>());
+            string? fort = ComplementFort(notes);
+            if (fort != null) { morceaux.Add(fort); }
 
             if (!string.IsNullOrEmpty(d_WorstCategory) && d_WorstCategoryNote < CategorieFaible
                 && CategorieFaibleTexte.TryGetValue(d_WorstCategory, out var faible))
@@ -2607,6 +2658,7 @@ namespace dotnet.core.thegoldenfan.Services
                     result.BestCategoryNote = Math.Round(meilleure.Value.Value, 3);
                     result.WorstCategory = pire.Key;
                     result.WorstCategoryNote = Math.Round(pire.Value.Value, 3);
+                    result.CategoryNotes = connues.ToDictionary(k => k.Key, v => Math.Round(v.Value!.Value, 3));
                 }
             }
 
