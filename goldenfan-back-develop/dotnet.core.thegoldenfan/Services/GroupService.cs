@@ -790,8 +790,8 @@ namespace dotnet.core.thegoldenfan.Services
 
             // Le niveau du tournoi (26 septembre 2026) : la moyenne des coefs
             // expert de ses membres, sans ceux qui n'ont encore joue aucun match.
-            // Elle suit les arrivees et les departs jusqu'au premier match du
-            // tournoi, puis elle est figee a la valeur d'avant ce match. Nulle si
+            // Elle suit les arrivees, les departs et les coefs de chaque match
+            // (plus de gel au premier match depuis le 26 septembre 2026). Nulle si
             // aucun membre n'a de coef.
             public double? AverageCoef { get; set; }
 
@@ -897,13 +897,11 @@ namespace dotnet.core.thegoldenfan.Services
             }
 
             // --- Le niveau de chaque tournoi (26 septembre 2026) ---
-            // Les coefs du moment, et ceux d'avant le premier match des tournois
-            // deja commences, un calcul par premier match distinct.
+            // Les coefs du moment.
             string? equipe = await dbContext.UserMatches.Select(um => um.TeamId).FirstOrDefaultAsync();
             var coefsActuels = equipe != null
                 ? await userService.ExpertCoefAllAsync(equipe)
                 : new Dictionary<Guid, double>();
-            var coefsAvant = new Dictionary<string, Dictionary<Guid, double>>();
             // Qui a deja joue, et quand : un membre qui n'a joue aucun match
             // n'entre pas dans la moyenne, meme s'il porte des notes de forfait.
             var dejaJoue = new List<(Guid UserId, DateTime Date)>();
@@ -994,24 +992,11 @@ namespace dotnet.core.thegoldenfan.Services
                         .ToDictionary(k => k.Id, v => v.DateTime));
                 }
 
-                // Le niveau : fige au premier match une fois celui-ci joue.
+                // Le niveau suit les coefs du moment, match apres match (Antoine,
+                // 26 septembre 2026 : d'abord fige au premier match, puis rendu
+                // vivant).
                 Dictionary<Guid, double> coefs = coefsActuels;
                 DateTime? figeLe = null;
-                if (equipe != null && joues[g.Id].Count > 0 && cycles[g.Id].Count > 0)
-                {
-                    string premier = cycles[g.Id][0];
-                    var m0 = tousMatchs.FirstOrDefault(f => f.Id.Equals(premier));
-                    if (m0 != null)
-                    {
-                        figeLe = m0.DateTime;
-                        if (!coefsAvant.TryGetValue(premier, out var avant))
-                        {
-                            avant = await userService.ExpertCoefAllAsync(equipe, null, m0.DateTime);
-                            coefsAvant[premier] = avant;
-                        }
-                        coefs = avant;
-                    }
-                }
                 List<double> valeurs = g.Members
                     .Select(m => m.UserId)
                     .Where(id => dejaJoue.Any(d => d.UserId.Equals(id)
