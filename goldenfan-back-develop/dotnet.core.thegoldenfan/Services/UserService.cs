@@ -1763,13 +1763,19 @@ namespace dotnet.core.thegoldenfan.Services
             return triees[index];
         }
 
-        public async Task<Dictionary<Guid, double>> ExpertCoefAllAsync(string teamId, string? excludeMatchId = null)
+        // avantLe (26 septembre 2026) : le coef tel qu'il etait avant un match
+        // donne, en ne comptant que les matchs joues avant cette date (heure de
+        // Paris, comme Match.DateTime). Sert a figer le niveau d'un tournoi a son
+        // premier match.
+        public async Task<Dictionary<Guid, double>> ExpertCoefAllAsync(string teamId, string? excludeMatchId = null,
+                                                                       DateTime? avantLe = null)
         {
             // Toutes les notes reelles, match par match.
             var notes = await dbContext
                 .UserMatches
                 .Where(w => w.TeamId.Equals(teamId) && w.ResultTotal.HasValue
-                         && (excludeMatchId == null || !w.MatchId.Equals(excludeMatchId)))
+                         && (excludeMatchId == null || !w.MatchId.Equals(excludeMatchId))
+                         && (avantLe == null || w.Match.DateTime < avantLe))
                 .Include(i => i.Match)
                 .Select(s => new { s.UserId, s.MatchId, Note = s.ResultTotal!.Value, s.Match.DateTime })
                 .ToListAsync();
