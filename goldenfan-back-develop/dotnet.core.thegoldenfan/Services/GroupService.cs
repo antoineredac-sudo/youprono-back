@@ -117,6 +117,9 @@ namespace dotnet.core.thegoldenfan.Services
 
         // Au-dela, le nom ne tient plus dans le message de partage sur X.
         private const int KopNameMaxLength = 30;
+        // Le nom d'un tournoi : 25 caracteres au plus, espaces compris (Antoine,
+        // 26 septembre 2026). Les tournois deja nommes plus long ne sont pas touches.
+        private const int TournoiNameMaxLength = 25;
 
         // Tous les kops sont listes, meme a un seul membre (decision d'Antoine du
         // 16 septembre 2026) : un kop tout juste ouvert, comme celui d'un media qui
@@ -1120,6 +1123,7 @@ namespace dotnet.core.thegoldenfan.Services
             // Creer un tournoi, c'est s'y asseoir : le plafond compte aussi ici.
             if (!IsKop(type))
             {
+                if (name.Length > TournoiNameMaxLength) { throw BaseException.InvalidModel(-5, src); }
                 await VerifierPlafondAsync(creatorId, input.IsPublic, src);
             }
 
@@ -3261,11 +3265,15 @@ namespace dotnet.core.thegoldenfan.Services
             { throw BaseException.InvalidModel(-1, src); }
 
             string nom = model.Name.Trim();
-            if (nom.Length < 2 || nom.Length > 30)
+            if (nom.Length < 2 || nom.Length > KopNameMaxLength)
             { throw BaseException.InvalidModel(-2, src); }
 
             var group = await dbContext.Groups.FirstOrDefaultAsync(w => w.Id.Equals(groupId));
             if (group == null) { throw BaseException.NotFound(-3, src); }
+
+            // Un tournoi : 25. Un kop garde ses 30.
+            if (!IsKop(group.Type) && nom.Length > TournoiNameMaxLength)
+            { throw BaseException.InvalidModel(-2, src); }
 
             // La vérification qui compte : celle du serveur.
             if (!group.CreatorId.Equals(userId)) { throw BaseException.NotFound(-4, src); }
