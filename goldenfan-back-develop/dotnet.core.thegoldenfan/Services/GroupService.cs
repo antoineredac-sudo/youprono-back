@@ -1163,6 +1163,9 @@ namespace dotnet.core.thegoldenfan.Services
             if (!IsKop(type))
             {
                 if (name.Length > TournoiNameMaxLength) { throw BaseException.InvalidModel(-5, src); }
+                // Deux tournois ne portent pas le meme nom (26 septembre 2026).
+                if (!sansNom && !(await NomLibreAsync(name, null)).Equals(name))
+                { throw BaseException.InvalidModel(-9, src); }
                 await VerifierPlafondAsync(creatorId, input.IsPublic, src);
             }
 
@@ -1454,6 +1457,100 @@ namespace dotnet.core.thegoldenfan.Services
                 .FirstOrDefaultAsync(w => w.UserId.Equals(userId) && w.GroupId.Equals(groupId));
             if (ligne == null) { return false; }
             ligne.NoticeSeen = true;
+            await dbContext.SaveChangesAsync();
+            return true;
+        }
+
+        // ===== UN NOM DE TOURNOI LIBRE (26 septembre 2026) =====
+        // Deux tournois ne portent pas le meme nom, sans tenir compte des
+        // majuscules ni des accents. Si le nom est pris, on propose le meme suivi
+        // d'un numero : « Les Princes du Parc 2 », puis 3, etc., en raccourcissant
+        // le nom si besoin pour tenir dans les 25 caracteres. La relance d'un
+        // tournoi n'est pas concernee : elle garde exprès le nom de l'original.
+        public async Task<string> NomLibreAsync(string nom, Guid? saufGroupe)
+        {
+            string propre = (nom ?? "").Trim();
+            if (propre.Length == 0) { return propre; }
+
+            var noms = await dbContext.Groups
+                .Where(w => w.Type.Equals(TypeAmis)
+                         && (saufGroupe == null || !w.Id.Equals(saufGroupe.Value)))
+                .Select(g => g.Name)
+                .ToListAsync();
+            var pris = new HashSet<string>(noms.Select(n => StringHelper.NormalizeString((n ?? "").Trim())));
+
+            if (!pris.Contains(StringHelper.NormalizeString(propre))) { return propre; }
+
+            for (int i = 2; i < 1000; i++)
+            {
+                string suffixe = " " + i;
+                string base_ = propre.Length + suffixe.Length > TournoiNameMaxLength
+                    ? propre.Substring(0, TournoiNameMaxLength - suffixe.Length).TrimEnd()
+                    : propre;
+                string candidat = base_ + suffixe;
+                if (!pris.Contains(StringHelper.NormalizeString(candidat))) { return candidat; }
+            }
+            return propre;
+        }
+
+        // ===== ADMINISTRATION : SUPPRIMER UN TOURNOI (26 septembre 2026) =====
+        // Pour Antoine seul, depuis Swagger, avec le code d'administration lu dans
+        // la variable ADMIN_CODE de Render (jamais ecrit dans le code). Sans cette
+        // variable, les deux routes refusent tout.
+        public static bool CodeAdminValide(string? code)
+        {
+            string attendu = Environment.GetEnvironmentVariable("ADMIN_CODE") ?? "";
+            return !string.IsNullOrWhiteSpace(attendu) && string.Equals(code, attendu, StringComparison.Ordinal);
+        }
+
+        public class TournoiAdminResult
+        {
+            public Guid Id { get; set; }
+            public string Name { get; set; } = "";
+            public string Type { get; set; } = "";
+            public bool IsPublic { get; set; }
+            public int MemberCount { get; set; }
+            public DateTime CreatedDate { get; set; }
+        }
+
+        // Les tournois crees par un pseudo, pour retrouver leur identifiant.
+        public async Task<List<TournoiAdminResult>> TournoisDuCreateurAsync(string pseudo)
+        {
+            string normalise = StringHelper.NormalizeString(pseudo ?? "");
+            var createur = await dbContext.Users
+                .FirstOrDefaultAsync(w => w.NormalizedDisplayName != null && w.NormalizedDisplayName.Equals(normalise));
+            if (createur == null) { return new List<TournoiAdminResult>(); }
+
+            return await dbContext.Groups
+                .Where(w => w.CreatorId.Equals(createur.Id))
+                .OrderBy(o => o.CreatedDate)
+                .Select(g => new TournoiAdminResult
+                {
+                    Id = g.Id,
+                    Name = g.Name,
+                    Type = g.Type,
+                    IsPublic = g.IsPublic,
+                    MemberCount = g.Members.Count,
+                    CreatedDate = g.CreatedDate
+                })
+                .ToListAsync();
+        }
+
+        // Supprime un tournoi et ses inscriptions. Les predictions des joueurs ne
+        // sont pas touchees : elles appartiennent aux joueurs, pas au tournoi.
+        public async Task<bool> SupprimerTournoiAsync(Guid groupId)
+        {
+            var group = await dbContext.Groups
+                .Include(i => i.Members)
+                .FirstOrDefaultAsync(w => w.Id.Equals(groupId));
+            if (group == null) { return false; }
+
+            // Un tournoi relance garde le lien vers son original : on le coupe.
+            var relances = await dbContext.Groups.Where(w => w.RelaunchedFromId == groupId).ToListAsync();
+            foreach (var r in relances) { r.RelaunchedFromId = null; }
+
+            dbContext.GroupMembers.RemoveRange(group.Members);
+            dbContext.Groups.Remove(group);
             await dbContext.SaveChangesAsync();
             return true;
         }
@@ -3316,6 +3413,14 @@ namespace dotnet.core.thegoldenfan.Services
 
             // La vérification qui compte : celle du serveur.
             if (!group.CreatorId.Equals(userId)) { throw BaseException.NotFound(-4, src); }
+
+            // Deux tournois ne portent pas le meme nom (26 septembre 2026). Garder
+            // son propre nom reste permis, meme s'il est partage avec son original
+            // relance.
+            if (!IsKop(group.Type)
+                && !StringHelper.NormalizeString(nom).Equals(StringHelper.NormalizeString(group.Name ?? ""))
+                && !(await NomLibreAsync(nom, group.Id)).Equals(nom))
+            { throw BaseException.InvalidModel(-5, src); }
 
             group.Name = nom;
             await dbContext.SaveChangesAsync();
