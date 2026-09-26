@@ -2203,6 +2203,50 @@ namespace dotnet.core.thegoldenfan.Services
             public string Password { get; set; } = null!;
         }
 
+        // ===== LE RENOUVELLEMENT DU JETON (26 septembre 2026) =====
+        // Le jeton de connexion vit 30 jours. A chaque visite, le site echange le
+        // sien contre un neuf : un joueur qui revient au moins une fois par mois
+        // ne se deconnecte donc jamais. Seul un jeton encore valable, signe avec
+        // la cle du serveur, peut etre echange -- un jeton expire ou fabrique ne
+        // donne rien, et il faut alors se reconnecter avec son mot de passe.
+        public async Task<string> RenouvelerJetonAsync(string? entete)
+        {
+            string src = "UserService.RenouvelerJetonAsync";
+            if (string.IsNullOrWhiteSpace(entete)) { throw BaseException.InvalidModel(-1, src); }
+
+            string jeton = entete.Trim();
+            if (jeton.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
+            { jeton = jeton.Substring(7).Trim(); }
+
+            // La meme cle et les memes regles que ConfigureService.AddJwtService.
+            var secret = Environment.GetEnvironmentVariable("GOLDENFAN_JWT_SECRET") ?? "goldenfan-dev-secret-change-me";
+            var regles = new Microsoft.IdentityModel.Tokens.TokenValidationParameters
+            {
+                ValidateIssuer = false,
+                ValidateAudience = false,
+                ValidateLifetime = true,
+                ValidateIssuerSigningKey = true,
+                IssuerSigningKey = new Microsoft.IdentityModel.Tokens.SymmetricSecurityKey(Encoding.UTF8.GetBytes(secret))
+            };
+
+            System.Security.Claims.ClaimsPrincipal porteur;
+            try
+            {
+                porteur = new System.IdentityModel.Tokens.Jwt.JwtSecurityTokenHandler()
+                    .ValidateToken(jeton, regles, out _);
+            }
+            catch { throw BaseException.InvalidModel(-2, src); }
+
+            string? id = porteur.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value;
+            if (!Guid.TryParse(id, out Guid userId)) { throw BaseException.InvalidModel(-3, src); }
+
+            var user = await dbContext.Users.FirstOrDefaultAsync(w => w.Id.Equals(userId));
+            if (user == null) { throw BaseException.NotFound(-4, src); }
+
+            return TokenHelper.GenerateToken(user.Id.ToString(), user.DisplayName ?? string.Empty,
+                GetRole(StringHelper.NormalizeString(user.DisplayName ?? "")));
+        }
+
         public async Task<string> LoginAsync(LoginInputModel model)
         {
             string src = "UserService.LoginAsync";
